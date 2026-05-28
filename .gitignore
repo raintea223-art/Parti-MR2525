@@ -1,0 +1,5 @@
+node_modules/
+data/catalog.db
+data/catalog.db-*
+data/uploads/
+*.log

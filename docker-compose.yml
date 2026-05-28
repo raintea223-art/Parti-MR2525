@@ -1,0 +1,15 @@
+services:
+  template-catalog:
+    build: .
+    container_name: mr2525-template-catalog
+    restart: unless-stopped
+    ports:
+      - "3847:3847"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3847
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123456
+      SESSION_SECRET: change-this-to-a-long-random-string
+    volumes:
+      - ./data:/app/data

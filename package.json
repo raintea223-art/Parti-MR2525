@@ -1,0 +1,17 @@
+{
+  "name": "mr2525-template-catalog",
+  "version": "1.0.0",
+  "description": "MR2525 SketchUp 方案模板协作库：表单录入、自动编号、BOM 报价、工作流",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --experimental-sqlite src/server.js",
+    "dev": "node --experimental-sqlite --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MR2525 方案模板库</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">TPL</div>
+        <div>
+          <strong>MR2525 模板库</strong>
+          <span>团队协作 · 自动编号 · 参考报价</span>
+        </div>
+      </div>
+      <nav id="nav">
+        <button type="button" class="nav-item active" data-view="create">新建模板</button>
+        <button type="button" class="nav-item" data-view="list">模板列表</button>
+        <button type="button" class="nav-item" data-view="published">对外展示</button>
+        <button type="button" class="nav-item" data-view="prices">单价库</button>
+        <button type="button" class="nav-item hidden" data-view="users">用户管理</button>
+        <button type="button" class="nav-item" data-view="workflow">流程说明</button>
+      </nav>
+      <div class="sidebar-user">
+        <span id="user-badge">未登录</span>
+        <button type="button" class="btn linkish" id="logout-btn">退出</button>
+      </div>
+      <div class="sidebar-foot" id="export-foot">
+        <button type="button" class="link-btn" id="export-main-btn">导出主表 CSV</button>
+        <button type="button" class="link-btn" id="export-bom-btn">导出 BOM CSV</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title">新建模板</h1>
+        <p id="page-subtitle">填写关键信息，系统自动生成模板编号并进入协作流程</p>
+      </header>
+
+      <!-- 新建：skp 先行 -->
+      <section id="view-create" class="view active">
+        <form id="create-form" class="card form-grid">
+          <p class="full hint">请先准备好本地 <strong>.skp</strong> 文件（简短命名，如 <code>L型展架.skp</code>），上传后选择应用场景，系统将自动生成模板编号与名称。</p>
+          <label class="full">
+            SketchUp 模型 <span class="req">*</span>
+            <input name="skp" type="file" accept=".skp" required />
+          </label>
+          <label>
+            应用场景 <span class="req">*</span>
+            <select name="scenario" required id="scenario-select"></select>
+          </label>
+          <div class="full form-actions">
+            <button type="submit" class="btn primary">上传并登记模板</button>
+          </div>
+        </form>
+        <div id="create-result" class="card success-panel hidden"></div>
+      </section>
+
+      <!-- 列表 -->
+      <section id="view-list" class="view">
+        <div class="toolbar card">
+          <input id="search-input" type="search" placeholder="搜索名称 / 编号" />
+          <select id="filter-status"></select>
+          <select id="filter-scenario"></select>
+          <button type="button" class="btn" id="refresh-list">刷新</button>
+        </div>
+        <div id="template-table-wrap" class="card table-wrap"></div>
+      </section>
+
+      <!-- 对外展示 -->
+      <section id="view-published" class="view">
+        <div id="published-grid" class="pub-grid"></div>
+      </section>
+
+      <!-- 单价库 -->
+      <section id="view-prices" class="view">
+        <p class="formula-hint" style="margin-bottom:16px">
+          由管理员在此维护<strong>六通、五金配件、板材</strong>单价。同事在模板详情中只能从单价库选取，不可随意改价（板材可选规格由材质/颜色/厚度维度组合）。
+        </p>
+        <div class="quote-tabs" id="price-lib-tabs">
+          <button type="button" class="quote-tab active" data-price-cat="nut">六通</button>
+          <button type="button" class="quote-tab" data-price-cat="hardware">五金配件</button>
+          <button type="button" class="quote-tab" data-price-cat="panel">板材</button>
+        </div>
+        <div id="price-form-wrap" class="card"></div>
+        <div id="price-table-wrap" class="card table-wrap"></div>
+      </section>
+
+      <!-- 用户管理 -->
+      <section id="view-users" class="view">
+        <div class="card">
+          <h3>添加同事账号</h3>
+          <p class="hint">账号与群晖 DSM 账号相互独立，但你可以用相同用户名方便记忆。角色说明：<strong>管理员</strong>可维护单价库与用户；<strong>编辑</strong>可录入模板与报价；<strong>只读</strong>仅查看。</p>
+          <form id="user-add-form" class="hardware-add">
+            <label>用户名<input name="username" required placeholder="如 zhangsan" autocomplete="off" /></label>
+            <label>显示名<input name="display_name" placeholder="张三" /></label>
+            <label>初始密码<input name="password" type="password" required minlength="6" autocomplete="new-password" /></label>
+            <label>角色<select name="role" id="user-role-select"></select></label>
+            <button type="submit" class="btn primary">添加用户</button>
+          </form>
+        </div>
+        <div id="users-table-wrap" class="card table-wrap"></div>
+      </section>
+
+      <!-- 流程说明 -->
+      <section id="view-workflow" class="view">
+        <div class="card workflow-card">
+          <h2>协作流程</h2>
+          <ol class="flow-steps">
+            <li><strong>录入员</strong>：上传 skp → 选择场景 → 系统生成编号</li>
+            <li><strong>录入员</strong>：上传实拍/效果图/渲染图，填写尺寸与 BOM → 待审核</li>
+            <li><strong>审核员</strong>：审核页勾选 checklist → 通过并发布（生成审核单存档）</li>
+            <li><strong>对外</strong>：导出 CSV 同步飞书多维表格 · 画册视图发给客户</li>
+          </ol>
+          <div class="status-legend" id="status-legend"></div>
+          <p class="hint">数据库文件位于 <code>data/catalog.db</code>，附件在 <code>data/uploads/</code>。可导出 CSV 导入飞书多维表格。</p>
+        </div>
+      </section>
+
+      <!-- 详情（隐藏视图，通过 JS 切换） -->
+      <section id="view-detail" class="view">
+        <button type="button" class="btn back-btn" id="back-to-list">← 返回列表</button>
+        <div id="detail-root"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="auth-screen" class="auth-screen">
+    <form id="login-form" class="auth-card card">
+      <h2>登录模板库</h2>
+      <p class="hint">使用管理员分配的账号登录。首次部署默认管理员见容器日志。</p>
+      <label>用户名<input name="username" required autocomplete="username" /></label>
+      <label>密码<input name="password" type="password" required autocomplete="current-password" /></label>
+      <button type="submit" class="btn primary full-width">登录</button>
+    </form>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
