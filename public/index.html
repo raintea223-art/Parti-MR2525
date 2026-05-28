@@ -36,6 +36,7 @@
 
     <main class="main">
       <header class="topbar">
+        <p class="eyebrow" id="page-eyebrow">团队协作</p>
         <h1 id="page-title">新建模板</h1>
         <p id="page-subtitle">填写关键信息，系统自动生成模板编号并进入协作流程</p>
       </header>
@@ -44,10 +45,26 @@
       <section id="view-create" class="view active">
         <form id="create-form" class="card form-grid">
           <p class="full hint">请先准备好本地 <strong>.skp</strong> 文件（简短命名，如 <code>L型展架.skp</code>），上传后选择应用场景，系统将自动生成模板编号与名称。</p>
-          <label class="full">
-            SketchUp 模型 <span class="req">*</span>
-            <input name="skp" type="file" accept=".skp" required />
-          </label>
+          <div class="full drop-field">
+            <span class="drop-label">SketchUp 模型 <span class="req">*</span></span>
+            <div class="drop-zone" id="skp-drop-zone" tabindex="0" role="button" aria-label="拖拽或点击上传 skp 文件">
+              <input name="skp" id="skp-input" type="file" accept=".skp" required class="drop-input" />
+              <div class="drop-zone-inner" id="skp-drop-inner">
+                <div class="drop-zone-icon" aria-hidden="true">
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M16 4v16M10 10l6-6 6 6M6 26h20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <p class="drop-zone-title">拖拽 .skp 文件到此处</p>
+                <p class="drop-zone-hint">或 <button type="button" class="drop-zone-link" id="skp-browse-btn">点击选择文件</button></p>
+              </div>
+              <div class="drop-zone-selected hidden" id="skp-selected">
+                <span class="drop-zone-file-icon" aria-hidden="true">SKP</span>
+                <div class="drop-zone-file-info">
+                  <span class="drop-zone-file-name" id="skp-file-name"></span>
+                  <button type="button" class="drop-zone-link" id="skp-change-btn">更换文件</button>
+                </div>
+              </div>
+            </div>
+          </div>
           <label>
             应用场景 <span class="req">*</span>
             <select name="scenario" required id="scenario-select"></select>
@@ -77,7 +94,7 @@
 
       <!-- 单价库 -->
       <section id="view-prices" class="view">
-        <p class="formula-hint" style="margin-bottom:16px">
+        <p class="formula-hint">
           由管理员在此维护<strong>六通、五金配件、板材</strong>单价。同事在模板详情中只能从单价库选取，不可随意改价（板材可选规格由材质/颜色/厚度维度组合）。
         </p>
         <div class="quote-tabs" id="price-lib-tabs">
@@ -130,7 +147,8 @@
 
   <div id="auth-screen" class="auth-screen">
     <form id="login-form" class="auth-card card">
-      <h2>登录模板库</h2>
+      <p class="eyebrow">MR2525 模板库</p>
+      <h2>登录</h2>
       <p class="hint">使用管理员分配的账号登录。首次部署默认管理员见容器日志。</p>
       <label>用户名<input name="username" required autocomplete="username" /></label>
       <label>密码<input name="password" type="password" required autocomplete="current-password" /></label>

@@ -5,13 +5,13 @@ let selectedFactors = new Set();
 let currentDetailId = null;
 
 const views = {
-  create: { title: "新建模板", subtitle: "上传 skp 并选择应用场景，系统自动生成编号与名称" },
-  list: { title: "模板列表", subtitle: "查看全部方案，点击进入详情继续协作" },
-  published: { title: "对外展示", subtitle: "已发布方案，可复制信息发给客户" },
-  prices: { title: "单价库", subtitle: "维护六通、五金配件、板材单价；模板详情从此选取" },
-  users: { title: "用户管理", subtitle: "为同事分配管理员 / 编辑 / 只读权限" },
-  workflow: { title: "流程说明", subtitle: "团队协作标准操作流程" },
-  detail: { title: "模板详情", subtitle: "建模、BOM、报价与状态推进" }
+  create: { eyebrow: "录入", title: "新建模板", subtitle: "上传 skp 并选择应用场景，系统自动生成编号与名称" },
+  list: { eyebrow: "协作", title: "模板列表", subtitle: "查看全部方案，点击进入详情继续协作" },
+  published: { eyebrow: "对外", title: "对外展示", subtitle: "已发布方案，可复制信息发给客户" },
+  prices: { eyebrow: "定价", title: "单价库", subtitle: "维护六通、五金配件、板材单价；模板详情从此选取" },
+  users: { eyebrow: "权限", title: "用户管理", subtitle: "为同事分配管理员 / 编辑 / 只读权限" },
+  workflow: { eyebrow: "流程", title: "流程说明", subtitle: "团队协作标准操作流程" },
+  detail: { eyebrow: "详情", title: "模板详情", subtitle: "建模、BOM、报价与状态推进" }
 };
 
 async function api(path, options = {}) {
@@ -87,6 +87,8 @@ function switchView(name) {
   if (navBtn) navBtn.classList.add("active");
 
   const info = views[name] || views.list;
+  const eyebrowEl = document.getElementById("page-eyebrow");
+  if (eyebrowEl) eyebrowEl.textContent = info.eyebrow || "";
   document.getElementById("page-title").textContent = info.title;
   document.getElementById("page-subtitle").textContent = info.subtitle;
 }
@@ -180,7 +182,7 @@ async function loadList() {
   const wrap = document.getElementById("template-table-wrap");
 
   if (!items.length) {
-    wrap.innerHTML = '<div style="padding:24px;color:#64748b">暂无模板，请先新建。</div>';
+    wrap.innerHTML = '<div class="empty-state">暂无模板，请先新建。</div>';
     return;
   }
 
@@ -226,13 +228,15 @@ async function loadPublished() {
         <div class="pub-body">
           <div class="pub-meta">${t.template_code} · ${t.scenario}</div>
           <h3>${escapeHtml(t.name)}</h3>
-          <p style="font-size:13px;color:#64748b;margin:0 0 10px">${escapeHtml(t.one_liner || "")}</p>
+          <p class="pub-desc">${escapeHtml(t.one_liner || "")}</p>
           <div class="pub-price">${fmtMoney(t.price_min)}${t.price_max !== t.price_min ? " – " + fmtMoney(t.price_max) : ""}</div>
-          <div style="font-size:12px;color:#64748b;margin-bottom:10px">
+          <div class="pub-dims">
             ${t.width_mm ? `${t.width_mm}×${t.depth_mm}×${t.height_mm} mm · ` : ""}${escapeHtml(t.one_liner || t.panel_note || "")}
           </div>
-          <button type="button" class="btn" data-copy="${t.id}">复制对外摘要</button>
-          ${t.detail_doc_url ? `<a class="btn" href="${escapeHtml(t.detail_doc_url)}" target="_blank" rel="noopener">打开详情链接</a>` : ""}
+          <div class="pub-actions">
+            <button type="button" class="btn primary" data-copy="${t.id}">复制对外摘要</button>
+            ${t.detail_doc_url ? `<a class="btn" href="${escapeHtml(t.detail_doc_url)}" target="_blank" rel="noopener">打开详情链接</a>` : ""}
+          </div>
         </div>
       </article>`;
     })
@@ -341,7 +345,7 @@ function renderAuditPanel(t) {
 
 function renderNutTable(lines) {
   if (!lines?.length) {
-    return '<p style="color:#64748b;font-size:13px">暂无六通行。请从单价库选择型号与数量。</p>';
+    return '<p class="hint">暂无六通行。请从单价库选择型号与数量。</p>';
   }
   return `<table>
     <thead><tr><th>型号</th><th>名称</th><th>数量</th><th>单价</th><th>小计</th><th></th></tr></thead>
@@ -355,13 +359,13 @@ function renderNutTable(lines) {
       </tr>`
       )
       .join("")}</tbody>
-    <tfoot><tr><td colspan="4" style="text-align:right;font-weight:700">六通小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="4" class="tfoot-label">六通小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
   </table>`;
 }
 
 function renderProfileTable(lines) {
   if (!lines?.length) {
-    return '<p style="color:#64748b;font-size:13px">暂无型材行。按《海智详细清单》填写各长度(inch)与数量。</p>';
+    return '<p class="hint">暂无型材行。按《海智详细清单》填写各长度(inch)与数量。</p>';
   }
   return `<table>
     <thead><tr>
@@ -376,13 +380,13 @@ function renderProfileTable(lines) {
       </tr>`
       )
       .join("")}</tbody>
-    <tfoot><tr><td colspan="5" style="text-align:right;font-weight:700">型材小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="5" class="tfoot-label">型材小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
   </table>`;
 }
 
 function renderHardwareTable(lines) {
   if (!lines?.length) {
-    return '<p style="color:#64748b;font-size:13px">暂无五金行。请从单价库选择配件。</p>';
+    return '<p class="hint">暂无五金行。请从单价库选择配件。</p>';
   }
   return `<table>
     <thead><tr><th>项目</th><th>规格</th><th>数量</th><th>单价</th><th>小计</th><th></th></tr></thead>
@@ -395,13 +399,13 @@ function renderHardwareTable(lines) {
       </tr>`
       )
       .join("")}</tbody>
-    <tfoot><tr><td colspan="4" style="text-align:right;font-weight:700">五金小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="4" class="tfoot-label">五金小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
   </table>`;
 }
 
 function renderPanelTable(lines) {
   if (!lines?.length) {
-    return '<p style="color:#64748b;font-size:13px">暂无板材行。请按材质/颜色/厚度从单价库选取。</p>';
+    return '<p class="hint">暂无板材行。请按材质/颜色/厚度从单价库选取。</p>';
   }
   return `<table>
     <thead><tr>
@@ -420,7 +424,7 @@ function renderPanelTable(lines) {
       </tr>`
       )
       .join("")}</tbody>
-    <tfoot><tr><td colspan="7" style="text-align:right;font-weight:700">板材小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="7" class="tfoot-label">板材小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
   </table>`;
 }
 
@@ -463,7 +467,7 @@ async function renderDetail(t) {
   root.innerHTML = `
     <div class="card detail-header">
       <div>
-        <div style="color:#64748b;font-size:13px;margin-bottom:4px">${t.template_code} · ${t.slug}</div>
+        <div class="detail-code">${t.template_code} · ${t.slug}</div>
         <h2>${escapeHtml(t.name)}</h2>
         <span class="badge ${t.status}">${meta.statusLabels[t.status]}</span>
       </div>
@@ -528,8 +532,8 @@ async function renderDetail(t) {
         <label class="file-btn">渲染图<input type="file" accept="image/*" data-kind="render" multiple /></label>
         <label class="file-btn">更新 skp<input type="file" accept=".skp" data-kind="skp" /></label>
       </div>
-      ${t.cover_image ? `<p style="font-size:12px">当前封面：<a href="${t.cover_image}" target="_blank"><img src="${t.cover_image}" alt="" style="max-height:80px;vertical-align:middle" /></a></p>` : ""}
-      ${t.skp_file ? `<p style="font-size:12px">skp：<a href="${t.skp_file}" target="_blank">${t.skp_file}</a></p>` : ""}
+      ${t.cover_image ? `<p class="hint">当前封面：<a href="${t.cover_image}" target="_blank"><img src="${t.cover_image}" alt="" class="cover-thumb" /></a></p>` : ""}
+      ${t.skp_file ? `<p class="hint">skp：<a href="${t.skp_file}" target="_blank">${t.skp_file}</a></p>` : ""}
       <h4>实拍照片（可选）</h4>
       ${renderImageGallery(t.photo_images)}
       <h4>效果图（必填 ≥1）</h4>
@@ -963,7 +967,7 @@ async function uploadFile(id, kind, file) {
 function renderBomTable(lines) {
   const wrap = document.getElementById("bom-table");
   if (!lines.length) {
-    wrap.innerHTML = '<p style="color:#64748b;font-size:13px">暂无 BOM 行，请添加明细。</p>';
+    wrap.innerHTML = '<p class="hint">暂无 BOM 行，请添加明细。</p>';
     return;
   }
   const total = lines.reduce((s, l) => s + (l.subtotal || l.qty * l.unit_price), 0);
@@ -979,7 +983,7 @@ function renderBomTable(lines) {
       </tr>`
       )
       .join("")}</tbody></table>
-    <p style="text-align:right;font-weight:700;margin-top:8px">物料合计：${fmtMoney(total)}</p>`;
+    <p class="total-row">物料合计：${fmtMoney(total)}</p>`;
 
   wrap.querySelectorAll("[data-del-bom]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -1178,10 +1182,10 @@ async function loadPrices(category = priceLibCategory) {
     wrap.innerHTML = `<table><thead><tr><th>名称</th><th>型号</th><th>对外价</th><th>对内价</th><th>启用</th><th></th></tr></thead><tbody>${rows
       .map(
         (r) => `<tr>
-        <td><input value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" style="width:100%" /></td>
+        <td><input class="input-full" value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" /></td>
         <td><input value="${escapeAttr(r.nut_model)}" data-field="nut_model" data-id="${r.id}" /></td>
-        <td><input type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" style="width:90px" /></td>
-        <td><input type="number" step="0.01" value="${r.unit_price_internal ?? r.unit_price}" data-field="unit_price_internal" data-id="${r.id}" style="width:90px" /></td>
+        <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" /></td>
+        <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price_internal ?? r.unit_price}" data-field="unit_price_internal" data-id="${r.id}" /></td>
         <td><input type="checkbox" ${r.enabled ? "checked" : ""} data-field="enabled" data-id="${r.id}" /></td>
         <td><button type="button" class="btn danger" data-del-price="${r.id}">删</button></td>
       </tr>`
@@ -1194,8 +1198,8 @@ async function loadPrices(category = priceLibCategory) {
         <td><input value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" /></td>
         <td><input value="${escapeAttr(r.spec)}" data-field="spec" data-id="${r.id}" /></td>
         <td>${r.unit}</td>
-        <td><input type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" style="width:90px" /></td>
-        <td><input type="number" step="0.01" value="${r.unit_price_internal ?? r.unit_price}" data-field="unit_price_internal" data-id="${r.id}" style="width:90px" /></td>
+        <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" /></td>
+        <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price_internal ?? r.unit_price}" data-field="unit_price_internal" data-id="${r.id}" /></td>
         <td><input type="checkbox" ${r.enabled ? "checked" : ""} data-field="enabled" data-id="${r.id}" /></td>
         <td><button type="button" class="btn danger" data-del-price="${r.id}">删</button></td>
       </tr>`
@@ -1209,9 +1213,9 @@ async function loadPrices(category = priceLibCategory) {
         <td>${renderColorLabel(r.color)}</td>
         <td>${r.thickness_mm}mm</td>
         <td>${r.pricing_mode === "fixed" ? "件价" : "㎡"}</td>
-        <td><input type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" style="width:90px" /></td>
-        <td><input type="number" step="0.01" value="${r.unit_price_internal ?? r.unit_price}" data-field="unit_price_internal" data-id="${r.id}" style="width:90px" /></td>
-        <td><input value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" style="width:100%" /></td>
+        <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" /></td>
+        <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price_internal ?? r.unit_price}" data-field="unit_price_internal" data-id="${r.id}" /></td>
+        <td><input class="input-full" value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" /></td>
         <td><input type="checkbox" ${r.enabled ? "checked" : ""} data-field="enabled" data-id="${r.id}" /></td>
         <td><button type="button" class="btn danger" data-del-price="${r.id}">删</button></td>
       </tr>`
@@ -1271,12 +1275,14 @@ function initNav() {
 }
 
 function initCreateForm() {
+  initSkpDropZone();
+
   document.getElementById("create-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const skp = fd.get("skp");
     if (!skp || !skp.name) {
-      toast("请选择 skp 文件", true);
+      toast("请选择或拖拽 skp 文件", true);
       return;
     }
     const uploadFd = new FormData();
@@ -1302,10 +1308,114 @@ function initCreateForm() {
       `;
       document.getElementById("goto-detail").addEventListener("click", () => openDetail(t.id));
       e.target.reset();
+      resetSkpDropZone();
       toast("模板已登记：" + t.template_code);
     } catch (err) {
       toast(err.message, true);
     }
+  });
+}
+
+function isSkpFile(file) {
+  return file && /\.skp$/i.test(file.name);
+}
+
+function setSkpFile(file) {
+  const input = document.getElementById("skp-input");
+  const zone = document.getElementById("skp-drop-zone");
+  const inner = document.getElementById("skp-drop-inner");
+  const selected = document.getElementById("skp-selected");
+  const nameEl = document.getElementById("skp-file-name");
+
+  if (!file) {
+    resetSkpDropZone();
+    return false;
+  }
+  if (!isSkpFile(file)) {
+    toast("仅支持 .skp 文件", true);
+    input.value = "";
+    return false;
+  }
+
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+
+  nameEl.textContent = file.name;
+  inner.classList.add("hidden");
+  selected.classList.remove("hidden");
+  zone.classList.add("has-file");
+  return true;
+}
+
+function resetSkpDropZone() {
+  const input = document.getElementById("skp-input");
+  const zone = document.getElementById("skp-drop-zone");
+  const inner = document.getElementById("skp-drop-inner");
+  const selected = document.getElementById("skp-selected");
+
+  input.value = "";
+  inner.classList.remove("hidden");
+  selected.classList.add("hidden");
+  zone.classList.remove("has-file", "is-dragover");
+}
+
+function initSkpDropZone() {
+  const zone = document.getElementById("skp-drop-zone");
+  const input = document.getElementById("skp-input");
+  const browseBtn = document.getElementById("skp-browse-btn");
+  const changeBtn = document.getElementById("skp-change-btn");
+
+  function openPicker() {
+    input.click();
+  }
+
+  browseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPicker();
+  });
+
+  changeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPicker();
+  });
+
+  zone.addEventListener("click", (e) => {
+    if (e.target.closest(".drop-zone-link")) return;
+    if (!zone.classList.contains("has-file")) openPicker();
+  });
+
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openPicker();
+    }
+  });
+
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (file) setSkpFile(file);
+  });
+
+  zone.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    zone.classList.add("is-dragover");
+  });
+
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("is-dragover");
+  });
+
+  zone.addEventListener("dragleave", (e) => {
+    if (!zone.contains(e.relatedTarget)) zone.classList.remove("is-dragover");
+  });
+
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("is-dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) setSkpFile(file);
   });
 }
 
@@ -1355,7 +1465,7 @@ async function loadUsers() {
           .join("")}</select></td>
         <td><input type="checkbox" ${u.enabled ? "checked" : ""} data-user-field="enabled" data-user-id="${u.id}" ${u.id === currentUser.id ? "disabled" : ""} /></td>
         <td>
-          <input type="password" placeholder="新密码" data-user-pass="${u.id}" style="width:120px;margin-right:6px" />
+          <input type="password" class="input-pass" placeholder="新密码" data-user-pass="${u.id}" />
           <button type="button" class="btn" data-reset-pass="${u.id}">改密</button>
           ${u.id === currentUser.id ? "" : `<button type="button" class="btn danger" data-del-user="${u.id}">删</button>`}
         </td>
