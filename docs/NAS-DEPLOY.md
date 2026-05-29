@@ -13,8 +13,9 @@
 | NAS | 支持 Docker（群晖 Container Manager、威联通 Container Station、飞牛、Unraid 等） |
 | 网络 | 同事与 NAS 在同一局域网，或已配置 VPN |
 | 数据 | `data/` 目录持久化（数据库 + 上传附件） |
+| PDF 手册 | 容器内已安装 **Chromium** + 中文字体（模板图册「下载手册」） |
 
-> 当前系统**无登录鉴权**，仅适合内网使用。勿直接暴露到公网。
+> 当前系统需登录后访问，适合内网使用。勿直接暴露到公网。
 
 ---
 
@@ -54,9 +55,11 @@ mr2525-template-catalog/
 4. **路径**：选刚上传的文件夹（含 `docker-compose.yml` 的目录）
 5. 来源选 **使用现有的 docker-compose.yml**
 6. 网页设置中确认端口映射为 **3847:3847**
-7. 点 **下一步** → **完成** → **构建**（首次约 1–3 分钟）
+7. 点 **下一步** → **完成** → **构建**（首次约 3–8 分钟，含 Chromium 与中文字体）
 
 构建成功后，项目状态应为 **运行中**，容器名 `mr2525-template-catalog`。
+
+> **模板图册 PDF**：依赖容器内 `/usr/bin/chromium`。若 PDF 下载失败，请重建镜像并确认 `Dockerfile` 使用 `node:22-slim` 且已安装 `chromium`、`fonts-noto-cjk`。
 
 ### 第三步：防火墙（若启用了 DSM 防火墙）
 
@@ -209,6 +212,7 @@ data/
 | 页面能开但保存失败 | `docker compose logs -f` 看报错；检查 `data/` 目录权限 |
 | 容器反复重启 | 确认 NAS 架构（x86/arm）与 Node 镜像兼容；群晖较老型号可能是 arm |
 | 需要改端口 | 修改 `docker-compose.yml` 中 `ports`，如 `"8080:3847"` |
+| 场景手册 PDF 无更新 | 重建/重启容器后，日志应含 `场景手册 PDF: 20260530-handbook-v2`；见 [场景库说明](SCENARIO-LIB-UPDATES.md) §12 |
 
 ---
 

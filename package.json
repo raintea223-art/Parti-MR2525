@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "express": "^4.21.2",
-    "multer": "^1.4.5-lts.1"
+    "html2canvas": "^1.4.1",
+    "multer": "^1.4.5-lts.1",
+    "puppeteer-core": "^24.10.0"
   }
 }

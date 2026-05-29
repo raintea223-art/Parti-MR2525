@@ -1,14 +1,22 @@
 const { EXTERNAL_PROCESS_FEE_RATE } = require("./constants");
+const { DEFAULT_FORMULA } = require("./profile-formula");
 
-/** MR2525 型材对外单价：ROUNDUP(长度inch × 1.778 + 42, 0) */
-function profileFactoryPrice(lengthInch) {
-  return Math.ceil(Number(lengthInch) * 1.778 + 42);
+/** 型材出厂价（对内）：ROUNDUP(长度 × rate + base, 0) */
+function profileFactoryPrice(lengthInch, formula = DEFAULT_FORMULA) {
+  const rate = Number(formula?.rate ?? DEFAULT_FORMULA.rate);
+  const base = Number(formula?.base ?? DEFAULT_FORMULA.base);
+  return Math.ceil(Number(lengthInch) * rate + base);
 }
 
-function profileLineTotal(lengthInch, qty, { external = true, coefficient = 1 } = {}) {
-  const factory = profileFactoryPrice(lengthInch);
-  const externalUnit = factory * Number(coefficient || 1);
-  const unitPrice = external ? externalUnit : externalUnit * 0.5;
+function profileLineTotal(
+  lengthInch,
+  qty,
+  { external = true, coefficient = 1, formula = DEFAULT_FORMULA } = {}
+) {
+  const factory = profileFactoryPrice(lengthInch, formula);
+  const mult = Number(formula?.external_multiplier ?? DEFAULT_FORMULA.external_multiplier) || 2;
+  const externalUnit = factory * mult * Number(coefficient || 1);
+  const unitPrice = external ? externalUnit : factory;
   const q = Number(qty) || 0;
   return {
     length_inch: Number(lengthInch),
@@ -89,11 +97,18 @@ function computeQuoteSummary({
   legacyBom = [],
   priceOverrideMin = null,
   priceOverrideMax = null,
-  skinUpgradeEnabled = false
+  skinUpgradeEnabled = false,
+  profileFormula = DEFAULT_FORMULA
 }) {
+  const formula = profileFormula || DEFAULT_FORMULA;
+
   const profileLines = profiles.map((p) => ({
     ...p,
-    ...profileLineTotal(p.length_inch, p.qty, { external: true, coefficient: p.coefficient })
+    ...profileLineTotal(p.length_inch, p.qty, {
+      external: true,
+      coefficient: p.coefficient,
+      formula
+    })
   }));
 
   const nutLines = nuts.map((n) => {
@@ -141,7 +156,11 @@ function computeQuoteSummary({
   const totalExternal = materialCostExternal + processAmountExternal;
 
   const profileInternal = profiles.map((p) =>
-    profileLineTotal(p.length_inch, p.qty, { external: false, coefficient: p.coefficient })
+    profileLineTotal(p.length_inch, p.qty, {
+      external: false,
+      coefficient: p.coefficient,
+      formula
+    })
   );
   const nutInternal = nuts.map((n) => {
     const internal = n.unit_price_internal ?? (n.unit_price_external ?? n.unit_price ?? 0);

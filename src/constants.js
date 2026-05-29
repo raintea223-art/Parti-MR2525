@@ -1,4 +1,4 @@
-/** @typedef {'draft'|'pending_model'|'pending_quote'|'pending_review'|'published'|'archived'} TemplateStatus */
+/** @typedef {'draft'|'pending_quote'|'pending_review'|'published'|'archived'} TemplateStatus */
 
 const SCENARIOS = [
   { value: "展厅", code: "ZT", slugPrefix: "zhanting" },
@@ -14,31 +14,22 @@ const SCENARIOS = [
 const SCENARIO_MAP = Object.fromEntries(SCENARIOS.map((s) => [s.value, s]));
 
 /** @type {TemplateStatus[]} */
-const STATUSES = [
-  "draft",
-  "pending_model",
-  "pending_quote",
-  "pending_review",
-  "published",
-  "archived"
-];
+const STATUSES = ["draft", "pending_quote", "pending_review", "published", "archived"];
 
 const STATUS_LABELS = {
   draft: "草稿",
-  pending_model: "待建模",
-  pending_quote: "待清单报价",
+  pending_quote: "待清单深化",
   pending_review: "待审核",
   published: "已发布",
   archived: "已下架"
 };
 
 const STATUS_FLOW = {
-  draft: ["pending_model"],
-  pending_model: ["pending_quote"],
+  draft: ["pending_quote"],
   pending_quote: ["pending_review"],
-  pending_review: ["published", "pending_model", "pending_quote"],
+  pending_review: ["published", "pending_quote"],
   published: ["archived"],
-  archived: ["published"]
+  archived: ["pending_review"]
 };
 
 const IMAGE_KINDS = {
@@ -61,11 +52,12 @@ const AUDIT_CHECKLIST = [
   { id: "quote_note", label: "报价口径已写" },
   { id: "one_liner", label: "一句话卖点已写" },
   { id: "reference_price", label: "参考价百位正确" },
-  { id: "skin_upgrade", label: "可升级开关状态正确" },
-  { id: "skin_note", label: "皮肤选配说明（若已开升级）与单价库一致" }
+  { id: "skin_upgrade", label: "可定制开关状态正确" }
 ];
 
-const BOM_CATEGORIES = ["型材", "五金", "面板", "辅料", "加工"];
+const CUSTOM_BOM_CATEGORIES = ["型材", "五金配件", "其他"];
+
+const BOM_CATEGORIES = CUSTOM_BOM_CATEGORIES;
 
 const BOM_UNITS = ["根", "个", "m", "m²", "项"];
 
@@ -89,7 +81,7 @@ const DEFAULT_QUOTE_NOTE =
   "含 MR2525 骨架、标准连接件及表中面板；不含运输、现场安装、税费。正式报价以确认尺寸与清单为准。";
 
 const PROFILE_FORMULA_NOTE =
-  "对外单价 = ROUNDUP(长度(in) × 1.778 + 42, 0)；对内单价 = 对外 × 0.5；小计 = 数量 × 单价";
+  "出厂价 = ROUNDUP(长度(in) × rate + base, 0)；对外报价单价 = 出厂价 × 2 × 系数（参数见单价库·型材）";
 
 const PANEL_FORMULA_NOTE =
   "面积(㎡) = 长(in)×25.4 × 宽(in)×25.4 / 10⁶；对外参考价含物料小计 × 10% 加工费，百位取整";
@@ -107,6 +99,7 @@ module.exports = {
   IMAGE_KINDS,
   AUDIT_CHECKLIST,
   BOM_CATEGORIES,
+  CUSTOM_BOM_CATEGORIES,
   BOM_UNITS,
   TAGS,
   PRICE_FACTORS,

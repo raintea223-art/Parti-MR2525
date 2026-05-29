@@ -3,12 +3,20 @@ const fs = require("fs");
 const path = require("path");
 const { PRICE_SEED } = require("./price-seed");
 const { computeQuoteSummary } = require("./pricing");
+const { getProfileFormula, ensureProfileFormulaSchema } = require("./profile-formula");
+const {
+  ensureProfileColorsSchema,
+  backfillQuoteProfileColors
+} = require("./profile-colors");
 const {
   getPriceItem,
   enrichPanelLine,
   enrichNutLine,
   enrichHardwareLine
 } = require("./price-items");
+const { getCustomItem, enrichBomLine } = require("./price-custom");
+const { initTagsSchema, migrateTagsFromTemplates } = require("./tags");
+const { TAGS } = require("./constants");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DB_PATH = path.join(DATA_DIR, "catalog.db");
@@ -123,7 +131,7 @@ function initSchema(db) {
       price_override_max REAL,
       detail_doc_url TEXT DEFAULT '',
       inquiry_form_url TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'pending_model',
+      status TEXT NOT NULL DEFAULT 'pending_quote',
       version TEXT DEFAULT 'v1',
       internal_note TEXT DEFAULT '',
       published_at TEXT,
@@ -232,11 +240,21 @@ function initSchema(db) {
   `);
 
   ensureColumn(db, "quote_hardware", "price_item_id", "INTEGER REFERENCES price_items(id)");
+  ensureColumn(db, "quote_hardware", "spec", "TEXT DEFAULT ''");
+  if (columnExists(db, "quote_hardware", "model")) {
+    db.exec(
+      `UPDATE quote_hardware SET spec = model
+       WHERE (spec IS NULL OR TRIM(spec) = '') AND model IS NOT NULL AND TRIM(model) != ''`
+    );
+  }
   ensureColumn(db, "quote_panels", "price_item_id", "INTEGER REFERENCES price_items(id)");
   ensureColumn(db, "quote_panels", "material_type", "TEXT DEFAULT ''");
   ensureColumn(db, "quote_panels", "color", "TEXT DEFAULT ''");
   ensureColumn(db, "quote_panels", "thickness_mm", "REAL");
   ensureColumn(db, "price_items", "unit_price_internal", "REAL");
+  ensureColumn(db, "price_items", "link", "TEXT DEFAULT ''");
+  ensureColumn(db, "price_items", "supplier", "TEXT DEFAULT ''");
+  ensureColumn(db, "price_items", "color_hex", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "photo_images", "TEXT DEFAULT '[]'");
   ensureColumn(db, "templates", "effect_images", "TEXT DEFAULT '[]'");
   ensureColumn(db, "templates", "render_images", "TEXT DEFAULT '[]'");
@@ -245,12 +263,121 @@ function initSchema(db) {
   ensureColumn(db, "templates", "last_audit_note", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "last_audit_by", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "last_audit_at", "TEXT");
+  ensureColumn(db, "bom_lines", "custom_price_item_id", "INTEGER");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS price_items_custom (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_category TEXT NOT NULL,
+      item_name TEXT NOT NULL,
+      spec TEXT DEFAULT '',
+      unit TEXT NOT NULL DEFAULT '个',
+      unit_price REAL NOT NULL DEFAULT 0,
+      unit_price_internal REAL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      merged_from_ids TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_category ON price_items_custom(source_category);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      contact TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);
+  `);
+
+  ensureProfileFormulaSchema(db);
+  ensureProfileColorsSchema(db);
+  ensureColumn(db, "quote_profiles", "color", "TEXT DEFAULT ''");
+  backfillQuoteProfileColors(db);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scenarios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      code TEXT NOT NULL UNIQUE CHECK(length(code) = 2),
+      slug_prefix TEXT NOT NULL,
+      picker_image TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS scenario_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scenario_id INTEGER NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('effect', 'render')),
+      file_path TEXT NOT NULL,
+      title TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS scenario_markers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scenario_image_id INTEGER NOT NULL REFERENCES scenario_images(id) ON DELETE CASCADE,
+      template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
+      x_pct REAL NOT NULL,
+      y_pct REAL NOT NULL,
+      label TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_scenario_images_scenario ON scenario_images(scenario_id);
+    CREATE INDEX IF NOT EXISTS idx_scenario_markers_image ON scenario_markers(scenario_image_id);
+    CREATE INDEX IF NOT EXISTS idx_scenario_markers_template ON scenario_markers(template_id);
+  `);
+
+  const { seedScenarios } = require("./scenarios");
+  seedScenarios(db);
+
+  migrateScenarioMarkersNullableTemplate(db);
+
+  db.exec(`UPDATE templates SET status = 'pending_quote' WHERE status = 'pending_model'`);
 
   db.exec(
     `UPDATE price_items SET unit_price_internal = unit_price WHERE unit_price_internal IS NULL`
   );
 
   seedPriceItems(db);
+
+  initTagsSchema(db);
+  migrateTagsFromTemplates(db, TAGS);
+}
+
+function migrateScenarioMarkersNullableTemplate(db) {
+  const templateCol = db.prepare("PRAGMA table_info(scenario_markers)").all().find((c) => c.name === "template_id");
+  if (!templateCol || templateCol.notnull === 0) return;
+
+  db.exec(`
+    CREATE TABLE scenario_markers_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scenario_image_id INTEGER NOT NULL REFERENCES scenario_images(id) ON DELETE CASCADE,
+      template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
+      x_pct REAL NOT NULL,
+      y_pct REAL NOT NULL,
+      label TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO scenario_markers_new (id, scenario_image_id, template_id, x_pct, y_pct, label, sort_order, created_at)
+      SELECT id, scenario_image_id, template_id, x_pct, y_pct, label, sort_order, created_at FROM scenario_markers;
+    DROP TABLE scenario_markers;
+    ALTER TABLE scenario_markers_new RENAME TO scenario_markers;
+    CREATE INDEX IF NOT EXISTS idx_scenario_markers_image ON scenario_markers(scenario_image_id);
+    CREATE INDEX IF NOT EXISTS idx_scenario_markers_template ON scenario_markers(template_id);
+  `);
 }
 
 function parseJsonField(value, fallback) {
@@ -299,11 +426,15 @@ function getBomLines(db, templateId) {
       `SELECT *, (qty * unit_price) AS subtotal FROM bom_lines WHERE template_id = ?
        ORDER BY line_no ASC, id ASC`
     )
-    .all(templateId);
+    .all(templateId)
+    .map((row) =>
+      enrichBomLine(row, row.custom_price_item_id ? getCustomItem(db, row.custom_price_item_id) : null)
+    );
 }
 
 function buildQuoteSummary(db, templateRow) {
   if (!templateRow) return null;
+  const profileFormula = getProfileFormula(db);
   return computeQuoteSummary({
     profiles: getQuoteProfiles(db, templateRow.id),
     nuts: getQuoteNuts(db, templateRow.id),
@@ -312,7 +443,8 @@ function buildQuoteSummary(db, templateRow) {
     legacyBom: getBomLines(db, templateRow.id),
     priceOverrideMin: templateRow.price_override_min,
     priceOverrideMax: templateRow.price_override_max,
-    skinUpgradeEnabled: !!templateRow.skin_upgrade_enabled
+    skinUpgradeEnabled: !!templateRow.skin_upgrade_enabled,
+    profileFormula
   });
 }
 
@@ -359,7 +491,7 @@ function getDb() {
   return db;
 }
 
-function listTemplates(db, { status, scenario, q } = {}) {
+function listTemplates(db, { status, scenario, q, tag, tags } = {}) {
   let sql = `SELECT t.* FROM templates t WHERE 1=1`;
   const params = [];
 
@@ -370,6 +502,20 @@ function listTemplates(db, { status, scenario, q } = {}) {
   if (scenario) {
     sql += " AND t.scenario = ?";
     params.push(scenario);
+  }
+  const tagNames = [
+    ...new Set(
+      [...(tags || []), ...(tag ? [tag] : [])].map((n) => String(n || "").trim()).filter(Boolean)
+    )
+  ];
+  if (tagNames.length) {
+    const placeholders = tagNames.map(() => "?").join(", ");
+    sql += ` AND (
+      SELECT COUNT(DISTINCT g.id) FROM template_tags tt
+      INNER JOIN tags g ON g.id = tt.tag_id
+      WHERE tt.template_id = t.id AND g.name IN (${placeholders}) COLLATE NOCASE
+    ) = ?`;
+    params.push(...tagNames, tagNames.length);
   }
   if (q) {
     sql += " AND (t.name LIKE ? OR t.template_code LIKE ? OR t.one_liner LIKE ?)";

@@ -105,6 +105,13 @@ function getSkpPath(templateCode) {
   return path.join(getTemplateAssetDir(templateCode), `${templateCode}.skp`);
 }
 
+function deleteTemplateAssets(templateCode) {
+  const dir = getTemplateAssetDir(templateCode);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 module.exports = {
   UPLOADS_DIR,
   AUDIT_ARCHIVE_DIR,
@@ -119,5 +126,6 @@ module.exports = {
   resolveCover,
   syncTemplateImages,
   getSkpPath,
-  parseCoverSource
+  parseCoverSource,
+  deleteTemplateAssets
 };

@@ -13,3 +13,5 @@ services:
       SESSION_SECRET: change-this-to-a-long-random-string
     volumes:
       - ./data:/app/data
+      - ./src:/app/src
+      - ./public:/app/public

@@ -4,25 +4,61 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MR2525 方案模板库</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=20260603b" />
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
+      <div class="sidebar-accent" aria-hidden="true"></div>
       <div class="brand">
-        <div class="brand-mark">TPL</div>
-        <div>
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="4" width="36" height="36" rx="2" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M4 14h36M14 4v36M30 4v36" stroke="currentColor" stroke-width="1" opacity="0.4"/>
+            <text x="22" y="28" text-anchor="middle" fill="currentColor" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace">TPL</text>
+          </svg>
+        </div>
+        <div class="brand-text">
           <strong>MR2525 模板库</strong>
-          <span>团队协作 · 自动编号 · 参考报价</span>
+          <span>协作 · 编号 · 报价</span>
         </div>
       </div>
-      <nav id="nav">
-        <button type="button" class="nav-item active" data-view="create">新建模板</button>
-        <button type="button" class="nav-item" data-view="list">模板列表</button>
-        <button type="button" class="nav-item" data-view="published">对外展示</button>
-        <button type="button" class="nav-item" data-view="prices">单价库</button>
-        <button type="button" class="nav-item hidden" data-view="users">用户管理</button>
-        <button type="button" class="nav-item" data-view="workflow">流程说明</button>
+      <nav id="nav" class="nav">
+        <button type="button" class="nav-item active" data-view="create">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+          新建模板
+        </button>
+        <button type="button" class="nav-item" data-view="list">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="3" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 7h14M6 7v8" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          模板列表
+        </button>
+        <button type="button" class="nav-item" data-view="published">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="6" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="2" width="6" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="14" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          模板图册
+        </button>
+        <button type="button" class="nav-item" data-view="scenarios">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 14l4-5 3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="2" y="2" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          场景库
+        </button>
+        <button type="button" class="nav-item" data-view="tags">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 6h10M6 4v4M12 4v4M5 10h8l-1 6H6l-1-6z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          标签库
+        </button>
+        <button type="button" class="nav-item" data-view="prices">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M9 5v8M7 7h3.5a1.5 1.5 0 010 3H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+          单价库
+        </button>
+        <button type="button" class="nav-item hidden" data-view="users">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="7" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 16c0-3 2.5-5 5-5s5 2 5 5M13 8h4M15 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+          用户管理
+        </button>
+        <button type="button" class="nav-item" data-view="workflow">
+          <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4h10v4H4zM4 10h6v4H4zM12 10h2v4h-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+          流程说明
+        </button>
       </nav>
       <div class="sidebar-user">
         <span id="user-badge">未登录</span>
@@ -32,9 +68,11 @@
         <button type="button" class="link-btn" id="export-main-btn">导出主表 CSV</button>
         <button type="button" class="link-btn" id="export-bom-btn">导出 BOM CSV</button>
       </div>
+      <div class="ui-version" title="用于确认是否已加载最新前端">UI 20260603b</div>
     </aside>
 
     <main class="main">
+      <div class="main-grid" aria-hidden="true"></div>
       <header class="topbar">
         <p class="eyebrow" id="page-eyebrow">团队协作</p>
         <h1 id="page-title">新建模板</h1>
@@ -51,7 +89,7 @@
               <input name="skp" id="skp-input" type="file" accept=".skp" required class="drop-input" />
               <div class="drop-zone-inner" id="skp-drop-inner">
                 <div class="drop-zone-icon" aria-hidden="true">
-                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M16 4v16M10 10l6-6 6 6M6 26h20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="6" y="10" width="28" height="22" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M20 16v10M15 19l5-5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <p class="drop-zone-title">拖拽 .skp 文件到此处</p>
                 <p class="drop-zone-hint">或 <button type="button" class="drop-zone-link" id="skp-browse-btn">点击选择文件</button></p>
@@ -65,10 +103,14 @@
               </div>
             </div>
           </div>
-          <label>
+          <label class="hidden" aria-hidden="true">
             应用场景 <span class="req">*</span>
-            <select name="scenario" required id="scenario-select"></select>
+            <select name="scenario" id="scenario-select"></select>
           </label>
+          <div id="scenario-picker-wrap" class="full hidden">
+            <span class="drop-label">选择应用场景 <span class="req">*</span></span>
+            <div id="scenario-picker-grid" class="scenario-picker-grid"></div>
+          </div>
           <div class="full form-actions">
             <button type="submit" class="btn primary">上传并登记模板</button>
           </div>
@@ -78,29 +120,71 @@
 
       <!-- 列表 -->
       <section id="view-list" class="view">
-        <div class="toolbar card">
-          <input id="search-input" type="search" placeholder="搜索名称 / 编号" />
-          <select id="filter-status"></select>
-          <select id="filter-scenario"></select>
-          <button type="button" class="btn" id="refresh-list">刷新</button>
+        <div class="toolbar card list-toolbar">
+          <div class="list-toolbar-row">
+            <input id="search-input" type="search" placeholder="搜索名称 / 编号" />
+            <select id="filter-status"></select>
+            <select id="filter-scenario"></select>
+            <button type="button" class="btn" id="refresh-list">刷新</button>
+          </div>
+          <div class="list-toolbar-tags">
+            <span class="list-tag-filter-label">标签</span>
+            <div id="list-tag-filter-pills" class="list-tag-filter-pills"></div>
+            <div class="list-tag-filter-compose">
+              <input type="text" id="list-tag-filter-input" class="tag-editor-input" placeholder="#添加筛选" autocomplete="off" spellcheck="false" />
+              <div id="list-tag-filter-dropdown" class="tag-editor-dropdown" role="listbox" hidden></div>
+            </div>
+            <button type="button" class="btn linkish hidden" id="clear-list-tags">清除标签</button>
+          </div>
         </div>
         <div id="template-table-wrap" class="card table-wrap"></div>
       </section>
 
-      <!-- 对外展示 -->
+      <!-- 模板图册 -->
       <section id="view-published" class="view">
-        <div id="published-grid" class="pub-grid"></div>
+        <p class="formula-hint">悬停可下载展示图、方案手册 PDF；有导出权限者可下载内部清单 CSV。支持勾选后批量下载。详见 <code>docs/GALLERY-UPDATES.md</code>。</p>
+        <div id="gallery-batch-toolbar" class="card gallery-batch-toolbar hidden"></div>
+        <div id="published-grid" class="gallery-grid"></div>
+      </section>
+
+      <!-- 标签库 -->
+      <section id="view-tags" class="view">
+        <p class="formula-hint">字号随关联模板数量变化；点击标签查看模板列表。详见 <code>docs/TAG-LIB-UPDATES.md</code>。</p>
+        <div id="tag-cloud-wrap" class="card tag-cloud-card">
+          <div id="tag-cloud" class="tag-cloud" aria-label="标签字云"></div>
+          <p id="tag-cloud-empty" class="hint hidden">暂无标签，请在模板详情中通过 <strong>#</strong> 添加第一个标签。</p>
+        </div>
+      </section>
+
+      <!-- 场景库 -->
+      <section id="view-scenarios" class="view">
+        <p class="formula-hint">每个场景一张卡片，进入后可管理场景图片与模板标记。详见 <code>docs/SCENARIO-LIB-UPDATES.md</code>。</p>
+        <div id="scenario-admin-bar" class="toolbar card hidden"></div>
+        <div id="scenario-list-grid" class="gallery-grid"></div>
+      </section>
+
+      <section id="view-scenario-detail" class="view">
+        <button type="button" class="btn back-btn" id="back-to-scenarios">← 返回场景库</button>
+        <div id="scenario-detail-root"></div>
+      </section>
+
+      <section id="view-scenario-markers" class="view">
+        <button type="button" class="btn back-btn" id="back-to-scenario-detail">← 返回场景图片</button>
+        <div id="scenario-marker-root"></div>
       </section>
 
       <!-- 单价库 -->
       <section id="view-prices" class="view">
         <p class="formula-hint">
-          由管理员在此维护<strong>六通、五金配件、板材</strong>单价。同事在模板详情中只能从单价库选取，不可随意改价（板材可选规格由材质/颜色/厚度维度组合）。
+          由管理员在此维护<strong>型材公式与型材颜色、六通、五金配件、板材、供应商库、非标件</strong>。模板详情从单价库选取；改价后已引用模板自动同步。详见 <code>docs/PRICE-LIB-UPDATES.md</code>。
         </p>
         <div class="quote-tabs" id="price-lib-tabs">
-          <button type="button" class="quote-tab active" data-price-cat="nut">六通</button>
+          <button type="button" class="quote-tab active" data-price-cat="profile">型材</button>
+          <button type="button" class="quote-tab" data-price-cat="nut">六通</button>
           <button type="button" class="quote-tab" data-price-cat="hardware">五金配件</button>
           <button type="button" class="quote-tab" data-price-cat="panel">板材</button>
+          <button type="button" class="quote-tab" data-price-cat="supplier">供应商库</button>
+          <button type="button" class="quote-tab" data-price-cat="custom">非标件</button>
         </div>
         <div id="price-form-wrap" class="card"></div>
         <div id="price-table-wrap" class="card table-wrap"></div>
@@ -122,19 +206,9 @@
         <div id="users-table-wrap" class="card table-wrap"></div>
       </section>
 
-      <!-- 流程说明 -->
+      <!-- 流程说明（内容由 app.js 渲染，含 Mermaid 流程图） -->
       <section id="view-workflow" class="view">
-        <div class="card workflow-card">
-          <h2>协作流程</h2>
-          <ol class="flow-steps">
-            <li><strong>录入员</strong>：上传 skp → 选择场景 → 系统生成编号</li>
-            <li><strong>录入员</strong>：上传实拍/效果图/渲染图，填写尺寸与 BOM → 待审核</li>
-            <li><strong>审核员</strong>：审核页勾选 checklist → 通过并发布（生成审核单存档）</li>
-            <li><strong>对外</strong>：导出 CSV 同步飞书多维表格 · 画册视图发给客户</li>
-          </ol>
-          <div class="status-legend" id="status-legend"></div>
-          <p class="hint">数据库文件位于 <code>data/catalog.db</code>，附件在 <code>data/uploads/</code>。可导出 CSV 导入飞书多维表格。</p>
-        </div>
+        <div id="workflow-root" class="workflow-page"></div>
       </section>
 
       <!-- 详情（隐藏视图，通过 JS 切换） -->
@@ -146,8 +220,15 @@
   </div>
 
   <div id="auth-screen" class="auth-screen">
+    <div class="auth-backdrop" aria-hidden="true">
+      <div class="auth-grid"></div>
+      <div class="auth-glow"></div>
+    </div>
     <form id="login-form" class="auth-card card">
-      <p class="eyebrow">MR2525 模板库</p>
+      <div class="auth-brand">
+        <div class="auth-mark" aria-hidden="true">MR2525</div>
+        <p class="eyebrow">方案模板库</p>
+      </div>
       <h2>登录</h2>
       <p class="hint">使用管理员分配的账号登录。首次部署默认管理员见容器日志。</p>
       <label>用户名<input name="username" required autocomplete="username" /></label>
@@ -157,6 +238,7 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="/app.js?v=20260603b"></script>
 </body>
 </html>

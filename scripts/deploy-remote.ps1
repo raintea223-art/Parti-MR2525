@@ -4,7 +4,7 @@ param(
   [Parameter(Mandatory = $true)][string]$Password,
   [string]$Share = "docker",
   [string]$RemotePath = "mr2525-template-catalog",
-  [string]$StageDir = "c:\Users\zl450\Nutstore\1\Cursor\_nas-deploy-staging\mr2525-template-catalog"
+  [string]$StageDir = "c:\Users\zl450\Nutstore\1\我的坚果云\Cursor\_nas-deploy-staging\mr2525-template-catalog"
 )
 
 $ErrorActionPreference = "Stop"
