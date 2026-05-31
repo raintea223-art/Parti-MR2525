@@ -3,6 +3,7 @@ const path = require("path");
 const { IMAGE_KINDS } = require("./constants");
 
 const UPLOADS_DIR = path.join(__dirname, "..", "data", "uploads");
+const PRICE_ITEMS_UPLOAD_DIR = path.join(UPLOADS_DIR, "price-items");
 
 const AUDIT_ARCHIVE_DIR = path.join(UPLOADS_DIR, "审核存档");
 const AUDIT_CSV_PATH = path.join(AUDIT_ARCHIVE_DIR, "审核记录.csv");
@@ -112,8 +113,18 @@ function deleteTemplateAssets(templateCode) {
   }
 }
 
+function removePriceItemImageFile(imageUrl) {
+  if (!imageUrl) return;
+  const rel = String(imageUrl).replace(/^\/uploads\//, "");
+  const abs = path.resolve(path.join(UPLOADS_DIR, rel));
+  const base = path.resolve(PRICE_ITEMS_UPLOAD_DIR);
+  if (!abs.startsWith(base + path.sep)) return;
+  if (fs.existsSync(abs)) fs.unlinkSync(abs);
+}
+
 module.exports = {
   UPLOADS_DIR,
+  PRICE_ITEMS_UPLOAD_DIR,
   AUDIT_ARCHIVE_DIR,
   AUDIT_CSV_PATH,
   getTemplateAssetDir,
@@ -127,5 +138,6 @@ module.exports = {
   syncTemplateImages,
   getSkpPath,
   parseCoverSource,
-  deleteTemplateAssets
+  deleteTemplateAssets,
+  removePriceItemImageFile
 };

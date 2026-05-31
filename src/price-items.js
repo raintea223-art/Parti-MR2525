@@ -1,4 +1,5 @@
 const { panelLineTotal, hardwareLineTotal } = require("./pricing");
+const { removePriceItemImageFile, toPublicUrl, relFromUploads } = require("./storage");
 
 function defaultInternalPrice(external) {
   const ext = Number(external) || 0;
@@ -16,6 +17,7 @@ function mapPriceItem(row) {
     link: row.link || "",
     supplier: row.supplier || "",
     color_hex: row.color_hex || "",
+    image_url: row.image_url || "",
     unit_price_external: external,
     unit_price_internal: internal
   };
@@ -383,6 +385,40 @@ function updatePriceItem(db, id, data) {
   return updated;
 }
 
+function setPriceItemImage(db, id, uploadedAbsPath) {
+  const item = getPriceItem(db, id);
+  if (!item) {
+    const err = new Error("记录不存在");
+    err.status = 404;
+    throw err;
+  }
+  if (!["nut", "hardware"].includes(item.category)) {
+    throw new Error("仅六通/五金支持图片");
+  }
+  removePriceItemImageFile(item.image_url);
+  const image_url = toPublicUrl(relFromUploads(uploadedAbsPath));
+  db.prepare("UPDATE price_items SET image_url = ?, updated_at = datetime('now') WHERE id = ?").run(
+    image_url,
+    id
+  );
+  return getPriceItem(db, id);
+}
+
+function clearPriceItemImage(db, id) {
+  const item = getPriceItem(db, id);
+  if (!item) {
+    const err = new Error("记录不存在");
+    err.status = 404;
+    throw err;
+  }
+  if (!["nut", "hardware"].includes(item.category)) {
+    throw new Error("仅六通/五金支持图片");
+  }
+  removePriceItemImageFile(item.image_url);
+  db.prepare("UPDATE price_items SET image_url = '', updated_at = datetime('now') WHERE id = ?").run(id);
+  return getPriceItem(db, id);
+}
+
 function deletePriceItem(db, id) {
   const refs = getPriceItemReferences(db, id);
   if (refs.total > 0) {
@@ -391,6 +427,8 @@ function deletePriceItem(db, id) {
     err.references = refs;
     throw err;
   }
+  const item = getPriceItem(db, id);
+  removePriceItemImageFile(item?.image_url);
   return db.prepare("DELETE FROM price_items WHERE id = ?").run(id);
 }
 
@@ -531,6 +569,8 @@ module.exports = {
   updatePriceItem,
   propagatePriceItemChange,
   deletePriceItem,
+  setPriceItemImage,
+  clearPriceItemImage,
   getPriceItemReferences,
   findPanelDuplicate,
   resolvePurchaseLink,

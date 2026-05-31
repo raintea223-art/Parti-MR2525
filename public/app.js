@@ -2,16 +2,6 @@ let meta = null;
 let currentUser = null;
 let selectedTags = new Set();
 let selectedFactors = new Set();
-let listTagFilters = [];
-let listFilterDropdownItems = [];
-let listFilterDropdownHighlight = -1;
-let listFilterSearchTimer = null;
-let listFilterAbort = null;
-let detailTemplateTags = [];
-let tagDropdownItems = [];
-let tagDropdownHighlight = -1;
-let tagSearchTimer = null;
-let tagEditorAbort = null;
 let currentDetailId = null;
 let selectedSkpFile = null;
 let activeQuoteTab = "profiles";
@@ -33,15 +23,12 @@ let markerDrag = null;
 let markerJustDragged = false;
 let pendingScenarioCoverFile = null;
 let galleryPreviewEl = null;
-let galleryPublishedItems = [];
-let gallerySelectedIds = new Set();
 
 const views = {
   create: { eyebrow: "录入", title: "新建模板", subtitle: "上传 skp 并选择应用场景，系统自动生成编号与名称" },
   list: { eyebrow: "协作", title: "模板列表", subtitle: "查看全部方案，点击进入详情继续协作" },
-  published: { eyebrow: "图册", title: "模板图册", subtitle: "已发布方案展示，可下载展示图、方案手册 PDF 与内部清单 CSV" },
+  published: { eyebrow: "图册", title: "模板图册", subtitle: "已发布方案展示，可下载展示图与方案清单 PDF" },
   scenarios: { eyebrow: "场景", title: "场景库", subtitle: "按场景浏览组合方案，下载场景手册" },
-  tags: { eyebrow: "标签", title: "标签库", subtitle: "按标签浏览模板，字号表示关联数量" },
   "scenario-detail": { eyebrow: "场景", title: "场景详情", subtitle: "管理场景图片与模板标记" },
   "scenario-markers": { eyebrow: "场景", title: "标记编辑", subtitle: "在场景图上标注关联模板" },
   prices: { eyebrow: "定价", title: "单价库", subtitle: "维护型材公式、六通、五金、板材与非标件单价" },
@@ -56,44 +43,14 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options
   });
-  const ct = res.headers.get("content-type") || "";
-  const data = ct.includes("application/json") ? await res.json().catch(() => ({})) : {};
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || data.message || res.statusText);
     err.status = res.status;
     err.data = data;
     throw err;
   }
-  if (path.startsWith("/api/") && res.ok && !ct.includes("application/json")) {
-    throw new Error("接口未返回 JSON，请重启服务（坚果云目录 npm start）后 Ctrl+F5");
-  }
   return data;
-}
-
-/** @returns {Array<{id:number,name:string,template_count:number}>|null} */
-function asTagRows(data) {
-  return Array.isArray(data) ? data : null;
-}
-
-async function fetchTagRows({ q, limit } = {}) {
-  let data;
-  if (q) {
-    data = await api(`/api/tags?q=${encodeURIComponent(q)}&limit=${limit || 20}`);
-  } else if (limit) {
-    try {
-      data = await api(`/api/tags/top?limit=${limit}`);
-    } catch {
-      data = await api("/api/tags");
-    }
-  } else {
-    data = await api("/api/tags");
-  }
-  const rows = asTagRows(data);
-  if (!rows) {
-    throw new Error("标签库接口未就绪，请在坚果云目录重启 npm start 后 Ctrl+F5");
-  }
-  if (limit && !q) return rows.slice(0, limit);
-  return rows;
 }
 
 function canAdmin() {
@@ -108,19 +65,6 @@ function canManagePrices() {
   return !!currentUser?.permissions?.canManagePrices;
 }
 
-function profileColorSelectHtml(selected) {
-  const colors = meta.profileColors || [];
-  if (!colors.length) {
-    return '<option value="">暂无可用颜色</option>';
-  }
-  return colors
-    .map(
-      (c) =>
-        `<option value="${escapeAttr(c)}"${c === selected ? " selected" : ""}>${escapeHtml(c)}</option>`
-    )
-    .join("");
-}
-
 function canManageUsers() {
   return !!currentUser?.permissions?.canManageUsers;
 }
@@ -129,29 +73,10 @@ function canExport() {
   return !!currentUser?.permissions?.canExport;
 }
 
-function canEditTemplateContent(template) {
-  return canWrite() && template?.status !== "published";
-}
-
 function canChangeTemplateStatus(templateStatus) {
-  if (templateStatus === "published") return canWrite();
   if (currentUser?.role === "admin") return true;
-  if (templateStatus === "archived") return canWrite();
+  if (templateStatus === "published" || templateStatus === "archived") return false;
   return canWrite();
-}
-
-/** 状态推进区展示的下一步（待审核→已发布走审核面板，不在此重复） */
-function getStatusActionTargets(currentStatus, nextStatuses) {
-  return (nextStatuses || []).filter((s) => {
-    if (s === "published" && currentStatus === "pending_review") return false;
-    if (currentStatus === "published") return s === "archived";
-    return true;
-  });
-}
-
-function getStatusActionLabel(targetStatus, currentStatus) {
-  if (currentStatus === "published" && targetStatus === "archived") return "下架";
-  return `→ ${meta.statusLabels[targetStatus] || targetStatus}`;
 }
 
 async function downloadExport(path, filename) {
@@ -183,8 +108,6 @@ function fmtMoney(n) {
   return "¥" + Number(n).toLocaleString("zh-CN", { maximumFractionDigits: 0 });
 }
 
-let workflowMermaidReady = false;
-
 function switchView(name) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
@@ -206,6 +129,8 @@ function switchView(name) {
     void renderWorkflowDiagrams();
   }
 }
+
+let workflowMermaidReady = false;
 
 async function renderWorkflowDiagrams() {
   if (!window.mermaid) return;
@@ -234,8 +159,8 @@ function renderWorkflowPage() {
 
   const role = currentUser?.role || "viewer";
   const roleTips = {
-    admin: "维护单价库与用户；可审核、下架与重新上架。",
-    editor: "新建模板、补全 BOM 与图片、提交审核；可导出 CSV。",
+    admin: "维护单价库与用户；可审核、下架与重新上架；六通/五金可维护图片。",
+    editor: "新建模板、补全 BOM 与图片、提交审核；可导出 CSV 与外包深化表单。",
     viewer: "浏览列表、详情、图册与场景库；不可改价与编辑。"
   };
 
@@ -252,6 +177,7 @@ function renderWorkflowPage() {
         <ol>
           <li><strong>新建模板</strong> → 上传 skp → 选场景</li>
           <li>详情：图片、尺寸、<strong>详细报价清单</strong>、标签</li>
+          <li>可选：<strong>外包深化表单</strong> 导出/导入</li>
           <li>保存基本信息 → <strong>→ 待审核</strong></li>
         </ol>
       </div>
@@ -260,14 +186,14 @@ function renderWorkflowPage() {
         <ol>
           <li>打开模板 <strong>审核页</strong></li>
           <li>勾选 checklist（与 skp/BOM 一致）</li>
-          <li><strong>通过并发布</strong> 或退回待清单深化</li>
+          <li><strong>通过并发布</strong> → 写入<strong>版本历史</strong></li>
         </ol>
       </div>
       <div class="card workflow-role-card">
         <h3>销售 / 对外</h3>
         <ol>
-          <li>已发布后 <strong>导出主表 CSV</strong> → 飞书</li>
-          <li>分享 <strong>画册视图</strong> 链接给客户</li>
+          <li>图册：<strong>下载手册</strong> PDF / <strong>下载清单</strong> CSV</li>
+          <li><strong>导出主表 CSV</strong> → 飞书画册</li>
           <li>客户询单后出正式报价（≠参考价）</li>
         </ol>
       </div>
@@ -279,53 +205,25 @@ function renderWorkflowPage() {
       <table class="workflow-status-table">
         <thead><tr><th>状态</th><th>说明</th></tr></thead>
         <tbody>
-          <tr><td><span class="badge pending_quote">待清单深化</span></td><td>补全图片、尺寸、报价清单、标签</td></tr>
-          <tr><td><span class="badge pending_review">待审核</span></td><td>审核页 checklist → 通过并发布</td></tr>
-          <tr><td><span class="badge published">已发布</span></td><td><strong>仅可改标签</strong>；其它须先点 <strong>下架</strong></td></tr>
-          <tr><td><span class="badge archived">已下架</span></td><td>可编辑；<strong>重新上架</strong> → 待审核（再发布版本 +0.1）</td></tr>
+          <tr><td>已发布</td><td>除<strong>标签</strong>外不可改；须<strong>下架</strong>后再编辑</td></tr>
+          <tr><td>已下架</td><td>可编辑；<strong>重新上架</strong> → 待审核 → 再发布（版本 +0.1；换 skp +1）</td></tr>
         </tbody>
       </table>
-    </div>
-
-    <div class="card workflow-card workflow-diagram-card">
-      <h3>已发布：修改与版本号</h3>
-      <div class="mermaid workflow-diagram">
-flowchart TD
-  Pub[已发布] --> Tag[仅改标签]
-  Pub --> Off[下架]
-  Off --> Edit[编辑全部内容]
-  Edit --> Relist[重新上架待审核]
-  Relist --> Approve[审核通过]
-  Approve --> Pub2[已发布 版本+0.1]
-  Edit --> Skp[更换skp模型]
-  Skp --> Ver[版本+1]
-      </div>
-      <table class="workflow-version-table">
-        <thead><tr><th>触发</th><th>版本变化</th><th>示例</th></tr></thead>
-        <tbody>
-          <tr><td>首次审核发布</td><td>规范为 v主.次</td><td>v1 → v1.0</td></tr>
-          <tr><td>再次审核发布</td><td><strong>+0.1</strong></td><td>v1.0 → v1.1</td></tr>
-          <tr><td>下架后更换 skp</td><td><strong>+1</strong>（次版本归零）</td><td>v1.2 → v2.0</td></tr>
-        </tbody>
-      </table>
-      <p class="hint">详情页「版本」只读；完整说明见 <code>docs/TEMPLATE-LIST-UPDATES.md</code> §7、<code>docs/WORKFLOW.md</code> §6。</p>
     </div>
 
     <div class="card workflow-card workflow-diagram-card">
       <h3>主流程</h3>
       <div class="mermaid workflow-diagram">
 flowchart TD
-  A[录入员：上传 skp 登记] --> B[系统生成 TPL-场景-序号-文件名]
-  B --> C[待清单深化]
-  C --> D[补全图·尺寸·报价清单·标签]
-  D --> E[待审核]
-  E -->|通过| F[已发布]
-  E -->|退回| C
-  F --> G[图册手册·清单·飞书]
-  G --> H[客户询单]
-  F --> I[已下架]
-  I --> J[重新上架]
-  J --> E
+  A[录入员：上传 skp] --> B[待清单深化]
+  B --> C[补全 BOM · 可选深化表单]
+  C --> D[待审核]
+  D -->|通过| E[已发布 · 版本历史]
+  D -->|退回| B
+  E --> F[图册手册/清单 · 飞书]
+  E --> G[下架]
+  G --> H[重新上架]
+  H --> D
       </div>
     </div>
 
@@ -343,85 +241,25 @@ stateDiagram-v2
     </div>
 
     <div class="card workflow-card workflow-diagram-card">
-      <h3>分工泳道</h3>
-      <div class="mermaid workflow-diagram">
-flowchart LR
-  subgraph R[录入员]
-    R1[skp登记] --> R2[BOM与图片] --> R3[待审核]
-  end
-  subgraph A[审核员]
-    A1[checklist] --> A2[发布或退回]
-  end
-  subgraph S[销售]
-    S1[飞书画册] --> S2[客户询单]
-  end
-  R3 --> A1 --> A2 --> S1
-      </div>
-    </div>
-
-    <div class="card workflow-card workflow-diagram-card">
-      <h3>详情 · 详细报价清单</h3>
-      <div class="mermaid workflow-diagram">
-flowchart TB
-  D[模板详情] --> B1[基本信息]
-  B1 --> B2[标签 hash打标]
-  B2 --> B3[三类图片]
-  B3 --> Q[详细报价清单]
-  Q --> P1[型材 颜色+长度]
-  Q --> P2[六通]
-  Q --> P3[五金]
-  Q --> P4[板材]
-  Q --> P5[其他]
-      </div>
-    </div>
-
-    <div class="card workflow-card workflow-diagram-card">
       <h3>对外交付</h3>
       <div class="mermaid workflow-diagram">
 flowchart LR
-  L[本地模板库] --> G[图册 PNG/手册PDF]
-  L --> C[飞书主表CSV]
-  C --> F[飞书画册]
-  G --> U[客户浏览]
-  F --> U
-  U --> Q[询单]
+  L[本地库] --> G[图册 PNG / 手册 PDF]
+  L --> C[清单 CSV]
+  L --> F[飞书 CSV]
+  F --> V[画册视图]
+  V --> U[客户询单]
       </div>
     </div>
 
-    <div class="card workflow-card">
-      <h3>模板图册 · 下载与批量</h3>
-      <table class="workflow-status-table">
-        <thead><tr><th>按钮</th><th>内容</th><th>权限</th></tr></thead>
-        <tbody>
-          <tr><td>下载图片</td><td>合成展示图 PNG</td><td>登录可读</td></tr>
-          <tr><td>下载手册</td><td>对外方案 PDF（<code>{编号}_手册.pdf</code>）</td><td>登录可读</td></tr>
-          <tr><td>下载清单</td><td>内部 BOM CSV（对内/对外价、供应商、链接）</td><td>导出权限</td></tr>
-          <tr><td>批量</td><td>勾选或全选 → 一键 zip 图片/手册、合并 csv</td><td>清单需导出权限</td></tr>
-        </tbody>
-      </table>
-      <p class="hint">详见 <code>docs/GALLERY-UPDATES.md</code> · <code>docs/WORKFLOW.md</code> §8.1</p>
-    </div>
-
-    <div class="card workflow-card">
-      <h3>操作步骤（录入 → 审核 → 对外）</h3>
-      <ol class="flow-steps">
-        <li><strong>登记</strong>：新建模板 → 上传 skp → 选场景 → 系统生成编号（格式 <code>TPL-场景-序号-文件名</code>），进入<strong>待清单深化</strong>。</li>
-        <li><strong>深化</strong>：上传实拍（可选）/ 效果图 / 渲染图；填宽×深×高；在报价清单录入型材（含颜色）、六通、五金、板材；<code>#</code> 打标签；填一句话卖点与报价口径；核对参考价 → <strong>→ 待审核</strong>。</li>
-        <li><strong>审核</strong>：审核员在审核页勾选 checklist → <strong>通过并发布</strong>（生成审核单 PNG + 台账 CSV；非首次发布时版本 <strong>+0.1</strong>）或退回。</li>
-        <li><strong>已发布维护</strong>：仅可改标签并「保存标签」；要改 BOM/图片等须 <strong>下架</strong> → 编辑 → 重新上架 → 再审核。</li>
-        <li><strong>对外</strong>：<strong>模板图册</strong>下载展示图、<strong>方案手册</strong> PDF；有导出权限者可下内部<strong>清单</strong> CSV 并批量打包；<strong>导出主表 CSV</strong> 更新飞书；销售分享画册链接。</li>
-      </ol>
-    </div>
-
     <div class="card workflow-card workflow-links">
-      <h3>延伸阅读</h3>
+      <h3>延伸阅读（仓库 docs/）</h3>
       <ul class="workflow-doc-list">
-        <li>已发布只读 / 下架 / 版本号 — <code>docs/TEMPLATE-LIST-UPDATES.md</code> §7 · <code>docs/WORKFLOW.md</code> §6</li>
-        <li>单价库（型材颜色、五金/板材）— <code>docs/PRICE-LIB-UPDATES.md</code></li>
-        <li>标签库与列表筛选 — <code>docs/TAG-LIB-UPDATES.md</code></li>
-        <li>详情基本信息栏 — <code>docs/DETAIL-BASIC-INFO-UPDATES.md</code></li>
-        <li>模板图册（手册 / 清单 / 批量）— <code>docs/GALLERY-UPDATES.md</code> · <code>docs/WORKFLOW.md</code> §8.1</li>
-        <li>飞书搭建 — <code>docs/FEISHU-SETUP.md</code></li>
+        <li><code>WORKFLOW.md</code> — 本文档完整版（含更多 Mermaid 图）</li>
+        <li><code>PRICE-LIB-UPDATES.md</code> — 单价库</li>
+        <li><code>GALLERY-UPDATES.md</code> — 模板图册</li>
+        <li><code>TEMPLATE-LIST-UPDATES.md</code> — 列表与已发布规则</li>
+        <li><code>FEISHU-SETUP.md</code> — 飞书搭建</li>
       </ul>
       <p class="hint">数据：<code>data/catalog.db</code> · 附件：<code>data/uploads/&#123;模板编号&#125;/</code> · 审核存档：<code>data/uploads/审核存档/</code></p>
     </div>
@@ -488,7 +326,10 @@ async function loadMeta() {
     { emptyLabel: "全部场景" }
   );
 
-  renderWorkflowPage();
+  renderChips("tags-box", meta.tags, selectedTags);
+  renderChips("factors-box", meta.priceFactors, selectedFactors);
+
+  if (document.getElementById("workflow-root")) renderWorkflowPage();
 
   const roleSelect = document.getElementById("user-role-select");
   if (roleSelect && meta.roles) {
@@ -499,549 +340,6 @@ async function loadMeta() {
   }
 }
 
-function addListFilterTag(name) {
-  const n = normalizeTagInput(name);
-  if (!n) return false;
-  if (listTagFilters.includes(n)) {
-    toast("该标签已在筛选中");
-    return false;
-  }
-  listTagFilters.push(n);
-  renderListFilterPills();
-  loadList();
-  return true;
-}
-
-function removeListFilterTag(name) {
-  listTagFilters = listTagFilters.filter((t) => t !== name);
-  renderListFilterPills();
-  loadList();
-}
-
-function clearListFilterTags() {
-  listTagFilters = [];
-  const input = document.getElementById("list-tag-filter-input");
-  if (input) input.value = "";
-  closeListFilterDropdown();
-  renderListFilterPills();
-  loadList();
-}
-
-function renderListFilterPills() {
-  const box = document.getElementById("list-tag-filter-pills");
-  const clearBtn = document.getElementById("clear-list-tags");
-  if (!box) return;
-  if (!listTagFilters.length) {
-    box.innerHTML = '<span class="hint list-tag-filter-empty">未选标签</span>';
-    clearBtn?.classList.add("hidden");
-    return;
-  }
-  clearBtn?.classList.remove("hidden");
-  box.innerHTML = listTagFilters
-    .map(
-      (name) =>
-        `<span class="tag-pill tag-pill-filter">#${escapeHtml(name)}<button type="button" class="tag-pill-remove" data-list-filter-remove="${escapeAttr(name)}" aria-label="移除">×</button></span>`
-    )
-    .join("");
-  box.querySelectorAll("[data-list-filter-remove]").forEach((btn) => {
-    btn.addEventListener("click", () => removeListFilterTag(btn.dataset.listFilterRemove));
-  });
-}
-
-let listFilterDropdownPositionHandler = null;
-
-function getListTagFilterDropdownHome() {
-  return document.querySelector(".list-tag-filter-compose");
-}
-
-function syncListFilterDropdownPosition() {
-  const input = document.getElementById("list-tag-filter-input");
-  const dd = document.getElementById("list-tag-filter-dropdown");
-  if (!input || !dd || dd.hidden) return;
-  if (dd.parentElement !== document.body) {
-    document.body.appendChild(dd);
-  }
-  const r = input.getBoundingClientRect();
-  dd.style.position = "fixed";
-  dd.style.left = `${Math.round(r.left)}px`;
-  dd.style.top = `${Math.round(r.bottom + 2)}px`;
-  dd.style.width = `${Math.max(Math.round(r.width), 260)}px`;
-  dd.style.maxWidth = "420px";
-  dd.style.margin = "0";
-  dd.style.right = "auto";
-  dd.style.bottom = "auto";
-  document.querySelector("#view-list .list-toolbar")?.classList.add("is-tag-dropdown-open");
-}
-
-function resetListFilterDropdownLayout() {
-  const dd = document.getElementById("list-tag-filter-dropdown");
-  const home = getListTagFilterDropdownHome();
-  document.querySelector("#view-list .list-toolbar")?.classList.remove("is-tag-dropdown-open");
-  if (listFilterDropdownPositionHandler) {
-    window.removeEventListener("scroll", listFilterDropdownPositionHandler, true);
-    window.removeEventListener("resize", listFilterDropdownPositionHandler);
-    listFilterDropdownPositionHandler = null;
-  }
-  if (!dd) return;
-  if (home && dd.parentElement === document.body) {
-    home.appendChild(dd);
-  }
-  dd.style.position = "";
-  dd.style.left = "";
-  dd.style.top = "";
-  dd.style.width = "";
-  dd.style.maxWidth = "";
-  dd.style.margin = "";
-  dd.style.right = "";
-  dd.style.bottom = "";
-}
-
-function closeListFilterDropdown() {
-  const dd = document.getElementById("list-tag-filter-dropdown");
-  if (dd) {
-    dd.hidden = true;
-    dd.classList.remove("is-open");
-  }
-  listFilterDropdownHighlight = -1;
-  resetListFilterDropdownLayout();
-}
-
-function renderListFilterDropdown(items, query) {
-  const dd = document.getElementById("list-tag-filter-dropdown");
-  if (!dd) return;
-  listFilterDropdownItems = items;
-  const q = normalizeTagInput(query ?? "");
-  const exact = q && items.some((t) => t.name.toLowerCase() === q.toLowerCase());
-  let html = items
-    .map(
-      (t, i) =>
-        `<button type="button" class="tag-dropdown-option${i === listFilterDropdownHighlight ? " is-active" : ""}" data-list-filter-pick="${escapeAttr(t.name)}">
-      <span>#${escapeHtml(t.name)}</span>
-      <span class="tag-dropdown-count">${t.template_count} 个模板</span>
-    </button>`
-    )
-    .join("");
-  if (q && !exact) {
-    html += `<button type="button" class="tag-dropdown-option tag-dropdown-create${listFilterDropdownHighlight === items.length ? " is-active" : ""}" data-list-filter-create="1">
-      <span>添加「#${escapeHtml(q)}」</span>
-    </button>`;
-  }
-  if (!html) {
-    closeListFilterDropdown();
-    return;
-  }
-  dd.innerHTML = html;
-  dd.hidden = false;
-  dd.classList.add("is-open");
-  dd.querySelectorAll("[data-list-filter-pick]").forEach((btn) => {
-    btn.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      addListFilterTag(btn.dataset.listFilterPick);
-      document.getElementById("list-tag-filter-input").value = "";
-      closeListFilterDropdown();
-    });
-  });
-  dd.querySelector("[data-list-filter-create]")?.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    addListFilterTag(q);
-    document.getElementById("list-tag-filter-input").value = "";
-    closeListFilterDropdown();
-  });
-  syncListFilterDropdownPosition();
-  if (!listFilterDropdownPositionHandler) {
-    listFilterDropdownPositionHandler = () => syncListFilterDropdownPosition();
-    window.addEventListener("scroll", listFilterDropdownPositionHandler, true);
-    window.addEventListener("resize", listFilterDropdownPositionHandler);
-  }
-}
-
-async function searchListFilterTags(query) {
-  const q = normalizeTagInput(query ?? "");
-  try {
-    const items = await fetchTagRows({ q: q || undefined, limit: 20 });
-    const filtered = items.filter((t) => !listTagFilters.includes(t.name));
-    listFilterDropdownHighlight = filtered.length || q ? 0 : -1;
-    renderListFilterDropdown(filtered, q);
-  } catch (e) {
-    toast(e.message, true);
-    closeListFilterDropdown();
-  }
-}
-
-function bindListTagFilter() {
-  closeListFilterDropdown();
-  if (listFilterAbort) listFilterAbort.abort();
-  listFilterAbort = new AbortController();
-  const { signal } = listFilterAbort;
-  const input = document.getElementById("list-tag-filter-input");
-  if (!input) return;
-
-  renderListFilterPills();
-  document.getElementById("clear-list-tags")?.addEventListener(
-    "click",
-    () => clearListFilterTags(),
-    { signal }
-  );
-
-  const schedule = () => {
-    clearTimeout(listFilterSearchTimer);
-    const query = getTagQueryFromInput(input.value);
-    if (query == null) {
-      closeListFilterDropdown();
-      return;
-    }
-    listFilterSearchTimer = setTimeout(() => searchListFilterTags(query), 80);
-  };
-
-  input.addEventListener("input", schedule, { signal });
-  input.addEventListener("compositionend", schedule, { signal });
-
-  input.addEventListener(
-    "keydown",
-    (e) => {
-      const query = getTagQueryFromInput(input.value);
-      const dd = document.getElementById("list-tag-filter-dropdown");
-      const open = dd && !dd.hidden;
-      const q = query == null ? "" : query;
-      const createRow =
-        q && !listFilterDropdownItems.some((t) => t.name.toLowerCase() === q.toLowerCase());
-      const total = listFilterDropdownItems.length + (createRow ? 1 : 0);
-
-      if (e.key === "ArrowDown" && open && total) {
-        e.preventDefault();
-        listFilterDropdownHighlight = (listFilterDropdownHighlight + 1) % total;
-        renderListFilterDropdown(listFilterDropdownItems, q);
-        return;
-      }
-      if (e.key === "ArrowUp" && open && total) {
-        e.preventDefault();
-        listFilterDropdownHighlight = (listFilterDropdownHighlight - 1 + total) % total;
-        renderListFilterDropdown(listFilterDropdownItems, q);
-        return;
-      }
-      if (e.key === "Escape") {
-        closeListFilterDropdown();
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (query == null) return;
-        if (open && listFilterDropdownHighlight >= 0 && listFilterDropdownHighlight < listFilterDropdownItems.length) {
-          addListFilterTag(listFilterDropdownItems[listFilterDropdownHighlight].name);
-        } else if (q) {
-          const match = listFilterDropdownItems.find((t) => t.name.toLowerCase() === q.toLowerCase());
-          addListFilterTag(match ? match.name : q);
-        } else {
-          return;
-        }
-        input.value = "";
-        closeListFilterDropdown();
-      }
-    },
-    { signal }
-  );
-
-  document.addEventListener(
-    "click",
-    (e) => {
-      if (
-        !e.target.closest(".list-tag-filter-compose") &&
-        !e.target.closest("#list-tag-filter-dropdown")
-      ) {
-        closeListFilterDropdown();
-      }
-    },
-    { signal }
-  );
-}
-
-function openTemplatesByTag(tagName) {
-  const n = normalizeTagInput(tagName);
-  if (!n) return;
-  if (!listTagFilters.includes(n)) listTagFilters.push(n);
-  switchView("list");
-  document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
-  document.querySelector('.nav-item[data-view="list"]')?.classList.add("active");
-  renderListFilterPills();
-  loadList();
-}
-
-async function loadTagCloud() {
-  const cloud = document.getElementById("tag-cloud");
-  const empty = document.getElementById("tag-cloud-empty");
-  if (!cloud) return;
-  let tags;
-  try {
-    tags = await fetchTagRows();
-  } catch (e) {
-    toast(e.message, true);
-    cloud.innerHTML = "";
-    empty?.classList.remove("hidden");
-    return;
-  }
-  if (!tags.length) {
-    cloud.innerHTML = "";
-    empty?.classList.remove("hidden");
-    return;
-  }
-  empty?.classList.add("hidden");
-  const counts = tags.map((t) => t.template_count);
-  const max = Math.max(...counts, 1);
-  const min = Math.min(...counts.filter((c) => c > 0), 0);
-  const minPx = 13;
-  const maxPx = 36;
-  cloud.innerHTML = tags
-    .map((t) => {
-      const c = t.template_count;
-      let size = minPx;
-      if (max > min && c > 0) {
-        size = minPx + ((c - min) / (max - min)) * (maxPx - minPx);
-      } else if (c > 0) {
-        size = (minPx + maxPx) / 2;
-      }
-      return `<button type="button" class="tag-cloud-item" data-tag="${escapeAttr(t.name)}" style="font-size:${size.toFixed(1)}px" title="${escapeAttr(t.name)} · ${c} 个模板">#${escapeHtml(t.name)}<span class="tag-cloud-count">${c}</span></button>`;
-    })
-    .join("");
-  cloud.querySelectorAll(".tag-cloud-item").forEach((btn) => {
-    btn.addEventListener("click", () => openTemplatesByTag(btn.dataset.tag));
-  });
-}
-
-function normalizeTagInput(raw) {
-  if (raw == null) return "";
-  let s = String(raw).trim().replace(/^#+/, "").trim();
-  s = s.replace(/\s+/g, " ");
-  return s.length > 40 ? s.slice(0, 40) : s;
-}
-
-function getTagQueryFromInput(value) {
-  const v = value || "";
-  const hash = v.indexOf("#");
-  if (hash === -1) return null;
-  return normalizeTagInput(v.slice(hash + 1));
-}
-
-function renderDetailTagPills() {
-  const box = document.getElementById("tag-editor-pills");
-  if (!box) return;
-  if (!detailTemplateTags.length) {
-    box.innerHTML = '<span class="hint">尚未添加标签</span>';
-    return;
-  }
-  box.innerHTML = detailTemplateTags
-    .map(
-      (name) =>
-        `<span class="tag-pill">#${escapeHtml(name)}<button type="button" class="tag-pill-remove" data-remove-tag="${escapeAttr(name)}" aria-label="移除标签">×</button></span>`
-    )
-    .join("");
-  box.querySelectorAll("[data-remove-tag]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      detailTemplateTags = detailTemplateTags.filter((n) => n !== btn.dataset.removeTag);
-      renderDetailTagPills();
-    });
-  });
-}
-
-function addDetailTag(name) {
-  const n = normalizeTagInput(name);
-  if (!n) return false;
-  if (detailTemplateTags.includes(n)) {
-    toast("标签已存在");
-    return false;
-  }
-  detailTemplateTags.push(n);
-  renderDetailTagPills();
-  return true;
-}
-
-function closeTagDropdown() {
-  const dd = document.getElementById("tag-editor-dropdown");
-  if (dd) {
-    dd.hidden = true;
-    dd.classList.remove("is-open");
-  }
-  tagDropdownHighlight = -1;
-}
-
-function renderTagDropdown(items, query) {
-  const dd = document.getElementById("tag-editor-dropdown");
-  if (!dd) return;
-  tagDropdownItems = items;
-  const q = normalizeTagInput(query ?? "");
-  const exact = q && items.some((t) => t.name.toLowerCase() === q.toLowerCase());
-  let html = items
-    .map(
-      (t, i) =>
-        `<button type="button" class="tag-dropdown-option${i === tagDropdownHighlight ? " is-active" : ""}" data-idx="${i}" data-tag-name="${escapeAttr(t.name)}">
-      <span>#${escapeHtml(t.name)}</span>
-      <span class="tag-dropdown-count">${t.template_count} 个模板</span>
-    </button>`
-    )
-    .join("");
-  if (q && !exact) {
-    html += `<button type="button" class="tag-dropdown-option tag-dropdown-create${tagDropdownHighlight === items.length ? " is-active" : ""}" data-create="1">
-      <span>创建标签「#${escapeHtml(q)}」</span>
-    </button>`;
-  }
-  if (!html) {
-    closeTagDropdown();
-    return;
-  }
-  dd.innerHTML = html;
-  dd.hidden = false;
-  dd.classList.add("is-open");
-  dd.querySelectorAll(".tag-dropdown-option").forEach((btn) => {
-    btn.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      if (btn.dataset.create) addDetailTag(q);
-      else addDetailTag(btn.dataset.tagName);
-      const input = document.getElementById("tag-editor-input");
-      if (input) input.value = "";
-      closeTagDropdown();
-    });
-  });
-}
-
-async function searchTagsForEditor(query) {
-  const q = normalizeTagInput(query ?? "");
-  try {
-    const items = await fetchTagRows({ q: q || undefined, limit: 20 });
-    const filtered = items.filter((t) => !detailTemplateTags.includes(t.name));
-    tagDropdownHighlight = filtered.length || q ? 0 : -1;
-    renderTagDropdown(filtered, q);
-  } catch (e) {
-    toast(e.message, true);
-    closeTagDropdown();
-  }
-}
-
-async function loadTagEditorTop() {
-  const top = document.getElementById("tag-editor-top");
-  if (!top) return;
-  let tags;
-  try {
-    tags = await fetchTagRows({ limit: 5 });
-  } catch {
-    top.innerHTML = "";
-    return;
-  }
-  if (!tags.length) {
-    top.innerHTML = "";
-    return;
-  }
-  top.innerHTML = `<span class="tag-editor-top-label">常用标签</span>${tags
-    .map(
-      (t) =>
-        `<button type="button" class="tag-quick-add" data-quick-tag="${escapeAttr(t.name)}">#${escapeHtml(t.name)} <span class="tag-dropdown-count">${t.template_count}</span></button>`
-    )
-    .join("")}`;
-  top.querySelectorAll("[data-quick-tag]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      addDetailTag(btn.dataset.quickTag);
-    });
-  });
-}
-
-function renderDetailTagField() {
-  return `<fieldset class="detail-section detail-section--full chip-field tag-editor-field">
-      <legend>标签</legend>
-      <div class="tag-editor-top" id="tag-editor-top"></div>
-      <div class="tag-editor-pills" id="tag-editor-pills"></div>
-      <div class="tag-editor-compose">
-        <input type="text" id="tag-editor-input" class="tag-editor-input" placeholder="#标签" autocomplete="off" spellcheck="false" />
-        <div id="tag-editor-dropdown" class="tag-editor-dropdown" role="listbox" hidden></div>
-      </div>
-    </fieldset>`;
-}
-
-function renderDetailTagReadonly(tags) {
-  const list = tags || [];
-  const pills = list.length
-    ? list.map((name) => `<span class="tag-pill">#${escapeHtml(name)}</span>`).join("")
-    : '<span class="hint">无标签</span>';
-  return `<fieldset class="detail-section detail-section--full chip-field tag-editor-field">
-      <legend>标签</legend>
-      <div class="tag-editor-pills">${pills}</div>
-    </fieldset>`;
-}
-
-function bindDetailTagEditor() {
-  if (tagEditorAbort) tagEditorAbort.abort();
-  tagEditorAbort = new AbortController();
-  const { signal } = tagEditorAbort;
-  const input = document.getElementById("tag-editor-input");
-  if (!input) return;
-
-  loadTagEditorTop();
-  renderDetailTagPills();
-
-  const scheduleTagSearch = () => {
-    clearTimeout(tagSearchTimer);
-    const query = getTagQueryFromInput(input.value);
-    if (query == null) {
-      closeTagDropdown();
-      return;
-    }
-    tagSearchTimer = setTimeout(() => searchTagsForEditor(query), 80);
-  };
-
-  input.addEventListener("input", scheduleTagSearch, { signal });
-  input.addEventListener("compositionend", scheduleTagSearch, { signal });
-
-  input.addEventListener(
-    "keydown",
-    (e) => {
-      const query = getTagQueryFromInput(input.value);
-      const dd = document.getElementById("tag-editor-dropdown");
-      const open = dd && !dd.hidden;
-      const q = query == null ? "" : query;
-      const createRow =
-        q && !tagDropdownItems.some((t) => t.name.toLowerCase() === q.toLowerCase());
-      const total = tagDropdownItems.length + (createRow ? 1 : 0);
-
-      if (e.key === "ArrowDown" && open && total) {
-        e.preventDefault();
-        tagDropdownHighlight = (tagDropdownHighlight + 1) % total;
-        renderTagDropdown(tagDropdownItems, q);
-        return;
-      }
-      if (e.key === "ArrowUp" && open && total) {
-        e.preventDefault();
-        tagDropdownHighlight = (tagDropdownHighlight - 1 + total) % total;
-        renderTagDropdown(tagDropdownItems, q);
-        return;
-      }
-      if (e.key === "Escape") {
-        closeTagDropdown();
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (query == null) return;
-        if (open && tagDropdownHighlight >= 0 && tagDropdownHighlight < tagDropdownItems.length) {
-          addDetailTag(tagDropdownItems[tagDropdownHighlight].name);
-        } else if (q) {
-          const match = tagDropdownItems.find((t) => t.name.toLowerCase() === q.toLowerCase());
-          addDetailTag(match ? match.name : q);
-        } else {
-          return;
-        }
-        input.value = "";
-        closeTagDropdown();
-      }
-    },
-    { signal }
-  );
-
-  document.addEventListener(
-    "click",
-    (e) => {
-      if (!e.target.closest(".tag-editor-compose")) closeTagDropdown();
-    },
-    { signal }
-  );
-}
-
 async function loadList() {
   const q = document.getElementById("search-input").value.trim();
   const status = document.getElementById("filter-status").value;
@@ -1050,15 +348,12 @@ async function loadList() {
   if (q) params.set("q", q);
   if (status) params.set("status", status);
   if (scenario) params.set("scenario", scenario);
-  listTagFilters.forEach((t) => params.append("tag", t));
 
   const items = await api("/api/templates?" + params.toString());
   const wrap = document.getElementById("template-table-wrap");
 
   if (!items.length) {
-    wrap.innerHTML = listTagFilters.length
-      ? `<div class="empty-state">同时包含标签 ${listTagFilters.map((t) => `#${escapeHtml(t)}`).join("、")} 的模板暂无。</div>`
-      : '<div class="empty-state">暂无模板，请先新建。</div>';
+    wrap.innerHTML = '<div class="empty-state">暂无模板，请先新建。</div>';
     return;
   }
 
@@ -1118,112 +413,15 @@ async function loadList() {
 
 async function loadPublished() {
   const items = await api("/api/templates?status=published");
-  galleryPublishedItems = items;
   const grid = document.getElementById("published-grid");
-  const toolbar = document.getElementById("gallery-batch-toolbar");
 
   if (!items.length) {
-    gallerySelectedIds.clear();
-    if (toolbar) toolbar.classList.add("hidden");
     grid.innerHTML = '<div class="card">暂无已发布模板。请在详情页审核通过并发布。</div>';
     return;
   }
 
-  const validIds = new Set(items.map((t) => String(t.id)));
-  for (const id of [...gallerySelectedIds]) {
-    if (!validIds.has(id)) gallerySelectedIds.delete(id);
-  }
-
-  if (toolbar) {
-    toolbar.classList.remove("hidden");
-    toolbar.innerHTML = renderGalleryBatchToolbar(items.length);
-    bindGalleryBatchToolbar(items);
-  }
-
   grid.innerHTML = items.map((t) => renderGalleryPoster(t)).join("");
   bindGalleryPosterActions(items);
-}
-
-function renderGalleryBatchToolbar(total) {
-  const n = gallerySelectedIds.size;
-  const exportBtns = canExport()
-    ? `<button type="button" class="btn primary" id="gallery-batch-csv" ${n ? "" : "disabled"}>一键下载清单</button>`
-    : "";
-  return `
-    <div class="gallery-batch-toolbar-inner">
-      <label class="gallery-batch-select-all">
-        <input type="checkbox" id="gallery-select-all" ${n === total && total > 0 ? "checked" : ""} />
-        全选 <span class="gallery-batch-count">（${n} / ${total}）</span>
-      </label>
-      <div class="gallery-batch-actions">
-        <button type="button" class="btn" id="gallery-batch-png" ${n ? "" : "disabled"}>一键下载图片</button>
-        <button type="button" class="btn" id="gallery-batch-pdf" ${n ? "" : "disabled"}>一键下载手册</button>
-        ${exportBtns}
-      </div>
-    </div>`;
-}
-
-function bindGalleryBatchToolbar(items) {
-  const total = items.length;
-  const updateToolbar = () => {
-    const toolbar = document.getElementById("gallery-batch-toolbar");
-    if (toolbar && !toolbar.classList.contains("hidden")) {
-      toolbar.innerHTML = renderGalleryBatchToolbar(total);
-      bindGalleryBatchToolbar(items);
-    }
-    document.querySelectorAll(".gallery-card-select").forEach((cb) => {
-      cb.checked = gallerySelectedIds.has(String(cb.dataset.gallerySelect));
-    });
-  };
-
-  document.getElementById("gallery-select-all")?.addEventListener("change", (e) => {
-    if (e.target.checked) {
-      items.forEach((t) => gallerySelectedIds.add(String(t.id)));
-    } else {
-      gallerySelectedIds.clear();
-    }
-    updateToolbar();
-  });
-
-  document.getElementById("gallery-batch-png")?.addEventListener("click", () => runGalleryBatchDownload("png", items));
-  document.getElementById("gallery-batch-pdf")?.addEventListener("click", () => runGalleryBatchDownload("pdf", items));
-  document.getElementById("gallery-batch-csv")?.addEventListener("click", () => runGalleryBatchDownload("csv", items));
-}
-
-function getGallerySelectedItems(items) {
-  return items.filter((t) => gallerySelectedIds.has(String(t.id)));
-}
-
-async function runGalleryBatchDownload(kind, items) {
-  const selected = getGallerySelectedItems(items);
-  if (!selected.length) {
-    toast("请先勾选要下载的模板", true);
-    return;
-  }
-  if (kind === "csv" && !canExport()) {
-    toast("无导出权限", true);
-    return;
-  }
-  const btn = document.getElementById(
-    kind === "png" ? "gallery-batch-png" : kind === "pdf" ? "gallery-batch-pdf" : "gallery-batch-csv"
-  );
-  if (btn) btn.disabled = true;
-  try {
-    if (kind === "png") await batchDownloadGalleryPngZip(selected);
-    else if (kind === "pdf") await batchDownloadGalleryPdfZip(selected);
-    else await batchDownloadGalleryCsv(selected);
-    toast(
-      kind === "png"
-        ? `已打包 ${selected.length} 张展示图`
-        : kind === "pdf"
-          ? `已打包 ${selected.length} 份手册`
-          : `已下载 ${selected.length} 个模板的清单 CSV`
-    );
-  } catch (err) {
-    toast(err.message || "批量下载失败", true);
-  } finally {
-    if (btn) btn.disabled = gallerySelectedIds.size === 0;
-  }
 }
 
 function renderGalleryPoster(t) {
@@ -1242,15 +440,7 @@ function renderGalleryPoster(t) {
     ? `<img class="gallery-poster-cover-img" src="${escapeAttr(t.cover_image)}" alt="" crossorigin="anonymous" />`
     : `<div class="gallery-poster-cover-placeholder">暂无封面</div>`;
 
-  const checked = gallerySelectedIds.has(String(t.id)) ? "checked" : "";
-  const csvBtn = canExport()
-    ? `<button type="button" class="btn gallery-overlay-btn" data-download-csv="${t.id}">下载清单</button>`
-    : "";
-
   return `<article class="gallery-card" data-id="${t.id}">
-    <label class="gallery-card-select-wrap" title="加入批量下载">
-      <input type="checkbox" class="gallery-card-select" data-gallery-select="${t.id}" ${checked} />
-    </label>
     <div class="gallery-poster" data-template-id="${t.id}" data-template-code="${escapeAttr(t.template_code)}" tabindex="0">
       <div class="gallery-poster-cover">${cover}</div>
       <div class="gallery-poster-info">
@@ -1266,8 +456,7 @@ function renderGalleryPoster(t) {
       </div>
       <div class="gallery-poster-overlay" aria-hidden="true">
         <button type="button" class="btn gallery-overlay-btn" data-download-png="${t.id}">下载图片</button>
-        <button type="button" class="btn primary gallery-overlay-btn" data-download-pdf="${t.id}">下载手册</button>
-        ${csvBtn}
+        <button type="button" class="btn primary gallery-overlay-btn" data-download-pdf="${t.id}">下载清单</button>
       </div>
     </div>
   </article>`;
@@ -1276,29 +465,9 @@ function renderGalleryPoster(t) {
 function bindGalleryPosterActions(items) {
   const byId = Object.fromEntries(items.map((t) => [String(t.id), t]));
 
-  document.querySelectorAll(".gallery-card-select").forEach((cb) => {
-    cb.addEventListener("change", (e) => {
-      e.stopPropagation();
-      const id = cb.dataset.gallerySelect;
-      if (cb.checked) gallerySelectedIds.add(id);
-      else gallerySelectedIds.delete(id);
-      const toolbar = document.getElementById("gallery-batch-toolbar");
-      if (toolbar && !toolbar.classList.contains("hidden")) {
-        toolbar.innerHTML = renderGalleryBatchToolbar(items.length);
-        bindGalleryBatchToolbar(items);
-      }
-    });
-    cb.addEventListener("click", (e) => e.stopPropagation());
-  });
-
-  document.querySelectorAll(".gallery-card-select-wrap").forEach((label) => {
-    label.addEventListener("click", (e) => e.stopPropagation());
-  });
-
   document.querySelectorAll(".gallery-poster").forEach((poster) => {
     poster.addEventListener("click", (e) => {
       if (e.target.closest(".gallery-overlay-btn")) return;
-      if (e.target.closest(".gallery-card-select-wrap")) return;
       if (window.matchMedia("(hover: none)").matches) {
         poster.classList.toggle("is-actions-open");
       }
@@ -1331,30 +500,9 @@ function bindGalleryPosterActions(items) {
       btn.disabled = true;
       try {
         await downloadPublicSheetPdf(t.id, t.template_code);
-        toast("方案手册已下载");
+        toast("清单 PDF 已下载");
       } catch (err) {
         toast(err.message || "PDF 生成失败", true);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  });
-
-  document.querySelectorAll("[data-download-csv]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (!canExport()) {
-        toast("无导出权限", true);
-        return;
-      }
-      const t = byId[btn.dataset.downloadCsv];
-      if (!t) return;
-      btn.disabled = true;
-      try {
-        await downloadInternalSheetCsv(t.id, t.template_code);
-        toast("内部清单 CSV 已下载");
-      } catch (err) {
-        toast(err.message || "CSV 导出失败", true);
       } finally {
         btn.disabled = false;
       }
@@ -1414,102 +562,12 @@ async function downloadPublicSheetPdf(templateId, templateCode) {
     throw new Error(data.error || "PDF 生成失败");
   }
   const blob = await res.blob();
-  triggerBlobDownload(blob, `${templateCode}_手册.pdf`);
-}
-
-async function downloadInternalSheetCsv(templateId, templateCode) {
-  await downloadExport(`/api/templates/${templateId}/internal-sheet.csv`, `${templateCode}_清单.csv`);
-}
-
-let jsZipLoadPromise = null;
-
-function ensureJSZip() {
-  if (window.JSZip) return Promise.resolve(window.JSZip);
-  if (!jsZipLoadPromise) {
-    jsZipLoadPromise = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
-      script.onload = () => resolve(window.JSZip);
-      script.onerror = () => reject(new Error("无法加载打包组件"));
-      document.head.appendChild(script);
-    });
-  }
-  return jsZipLoadPromise;
-}
-
-function triggerBlobDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = `${templateCode}_清单.pdf`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-function galleryBatchZipName(kind) {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  if (kind === "png") return `图册-展示图-${stamp}.zip`;
-  if (kind === "pdf") return `图册-手册-${stamp}.zip`;
-  return `图册-清单-${stamp}.zip`;
-}
-
-async function batchDownloadGalleryCsv(templates) {
-  const ids = templates.map((t) => t.id).join(",");
-  const filename =
-    templates.length === 1 ? `${templates[0].template_code}_清单.csv` : galleryBatchZipName("csv").replace(".zip", ".csv");
-  await downloadExport(`/api/export/gallery-sheet?ids=${encodeURIComponent(ids)}`, filename);
-}
-
-async function batchDownloadGalleryPngZip(templates) {
-  const JSZip = await ensureJSZip();
-  const zip = new JSZip();
-  const html2canvas = await ensureHtml2Canvas();
-  for (let i = 0; i < templates.length; i++) {
-    const t = templates[i];
-    const poster = document.querySelector(
-      `.gallery-poster[data-template-id="${t.id}"]`
-    );
-    if (!poster) continue;
-    const overlay = poster.querySelector(".gallery-poster-overlay");
-    if (overlay) overlay.style.visibility = "hidden";
-    try {
-      const canvas = await html2canvas(poster, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false
-      });
-      const dataUrl = canvas.toDataURL("image/png");
-      const base64 = dataUrl.split(",")[1];
-      zip.file(`${t.template_code}.png`, base64, { base64: true });
-    } finally {
-      if (overlay) overlay.style.visibility = "";
-    }
-  }
-  const blob = await zip.generateAsync({ type: "blob" });
-  triggerBlobDownload(blob, galleryBatchZipName("png"));
-}
-
-async function batchDownloadGalleryPdfZip(templates) {
-  const JSZip = await ensureJSZip();
-  const zip = new JSZip();
-  for (const t of templates) {
-    const res = await fetch(`/api/templates/${t.id}/public-sheet.pdf`, { credentials: "include" });
-    const contentType = res.headers.get("content-type") || "";
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `${t.template_code} 手册生成失败`);
-    }
-    if (!contentType.includes("application/pdf")) {
-      throw new Error(`${t.template_code} 手册生成失败`);
-    }
-    const blob = await res.blob();
-    zip.file(`${t.template_code}_手册.pdf`, blob);
-  }
-  const out = await zip.generateAsync({ type: "blob" });
-  triggerBlobDownload(out, galleryBatchZipName("pdf"));
 }
 
 function escapeHtml(s) {
@@ -1561,128 +619,6 @@ function buildCoverOptions(t) {
   return opts;
 }
 
-function resolveCoverSelection(t, preferredValue) {
-  const opts = buildCoverOptions(t);
-  if (!opts.length) return null;
-  if (preferredValue && opts.some((o) => o.value === preferredValue)) {
-    return opts.find((o) => o.value === preferredValue);
-  }
-  if (t.cover_source && opts.some((o) => o.value === t.cover_source)) {
-    return opts.find((o) => o.value === t.cover_source);
-  }
-  return opts[0];
-}
-
-function renderCoverSourcePicker(t, preferredValue) {
-  const selected = resolveCoverSelection(t, preferredValue);
-  if (!selected) {
-    return `<div class="detail-section detail-section--cover full"><span class="detail-section-label">封面来源</span><p class="hint">上传实拍或效果图后可选择封面</p></div>`;
-  }
-  const opts = buildCoverOptions(t);
-  if (!canEditTemplateContent(t)) {
-    return `<div class="detail-section detail-section--cover full">
-      <span class="detail-section-label">封面来源</span>
-      <div class="cover-source-static">
-        <img src="${escapeAttr(selected.url)}" alt="" class="cover-source-trigger-thumb" />
-        <span>${escapeHtml(selected.label)}</span>
-      </div>
-    </div>`;
-  }
-  return `<div class="detail-section detail-section--cover full" id="cover-source-picker-wrap">
-      <span class="detail-section-label">封面来源</span>
-      <div class="cover-source-picker" id="cover-source-picker">
-        <input type="hidden" id="d-cover-source" value="${escapeAttr(selected.value)}" />
-        <button type="button" class="cover-source-trigger" id="cover-source-trigger" aria-haspopup="listbox" aria-expanded="false">
-          <img src="${escapeAttr(selected.url)}" alt="" class="cover-source-trigger-thumb" />
-          <span class="cover-source-trigger-label">${escapeHtml(selected.label)}</span>
-          <span class="cover-source-chevron" aria-hidden="true">▾</span>
-        </button>
-        <div class="cover-source-menu" id="cover-source-menu" role="listbox" hidden>
-          ${opts
-            .map(
-              (o) =>
-                `<button type="button" role="option" class="cover-source-option${o.value === selected.value ? " is-selected" : ""}" data-value="${escapeAttr(o.value)}">
-              <img src="${escapeAttr(o.url)}" alt="" />
-              <span>${escapeHtml(o.label)}</span>
-            </button>`
-            )
-            .join("")}
-        </div>
-      </div>
-    </div>`;
-}
-
-let coverPickerDocAbort = null;
-
-function bindCoverSourcePicker(templateId) {
-  if (coverPickerDocAbort) coverPickerDocAbort.abort();
-  const picker = document.getElementById("cover-source-picker");
-  const hidden = document.getElementById("d-cover-source");
-  const trigger = document.getElementById("cover-source-trigger");
-  const menu = document.getElementById("cover-source-menu");
-  if (!picker || !hidden || !trigger || !menu) return;
-
-  const closeMenu = () => {
-    menu.hidden = true;
-    trigger.setAttribute("aria-expanded", "false");
-  };
-
-  trigger.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (menu.hidden) {
-      menu.hidden = false;
-      trigger.setAttribute("aria-expanded", "true");
-    } else {
-      closeMenu();
-    }
-  });
-
-  menu.querySelectorAll(".cover-source-option").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const value = btn.dataset.value;
-      if (value === hidden.value) {
-        closeMenu();
-        return;
-      }
-      hidden.value = value;
-      const img = btn.querySelector("img");
-      const label = btn.querySelector("span")?.textContent || "";
-      trigger.querySelector(".cover-source-trigger-thumb").src = img?.src || "";
-      trigger.querySelector(".cover-source-trigger-label").textContent = label;
-      menu.querySelectorAll(".cover-source-option").forEach((b) =>
-        b.classList.toggle("is-selected", b.dataset.value === value)
-      );
-      closeMenu();
-      try {
-        await api(`/api/templates/${templateId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ cover_source: value })
-        });
-        toast("封面已更新");
-        openDetail(templateId);
-      } catch (e) {
-        toast(e.message, true);
-      }
-    });
-  });
-
-  coverPickerDocAbort = new AbortController();
-  document.addEventListener(
-    "click",
-    (e) => {
-      if (!document.getElementById("cover-source-picker")?.contains(e.target)) closeMenu();
-    },
-    { signal: coverPickerDocAbort.signal }
-  );
-}
-
-function refreshCoverSourcePicker(t, templateId, preferredValue) {
-  const wrap = document.getElementById("cover-source-picker-wrap");
-  if (!wrap) return;
-  wrap.outerHTML = renderCoverSourcePicker(t, preferredValue);
-  if (canWrite() && document.getElementById("cover-source-picker")) bindCoverSourcePicker(templateId);
-}
-
 function renderAuditPanel(t) {
   if (t.status !== "pending_review" || !canWrite()) return "";
   const items = (meta.auditChecklist || []).map(
@@ -1729,19 +665,18 @@ function renderProfileTable(lines) {
   }
   return `<table>
     <thead><tr>
-      <th>颜色</th><th>长度(in)</th><th>数量</th><th>系数</th><th>出厂参考价</th><th>报价单价</th><th>小计</th><th></th>
+      <th>长度(in)</th><th>数量</th><th>系数</th><th>出厂参考价</th><th>报价单价</th><th>小计</th><th></th>
     </tr></thead>
     <tbody>${lines
       .map(
         (l) => `<tr>
-        <td>${escapeHtml(l.color || "—")}</td>
         <td>${l.length_inch}</td><td>${l.qty}</td><td>${l.coefficient ?? 1}</td>
         <td>${fmtMoney(l.factory_price)}</td><td>${fmtMoney(l.quote_unit)}</td><td>${fmtMoney(l.subtotal)}</td>
         <td><button type="button" class="btn danger" data-del-profile="${l.id}">删</button></td>
       </tr>`
       )
       .join("")}</tbody>
-    <tfoot><tr><td colspan="6" class="tfoot-label">型材小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
+    <tfoot><tr><td colspan="5" class="tfoot-label">型材小计</td><td colspan="2">${fmtMoney(lines.reduce((s, l) => s + l.subtotal, 0))}</td></tr></tfoot>
   </table>`;
 }
 
@@ -1811,8 +746,7 @@ async function renderDetail(t) {
     api("/api/price-items/panel-filters")
   ]);
   const nextStatuses = canChangeTemplateStatus(t.status) ? meta.statusFlow[t.status] || [] : [];
-  const statusActions = getStatusActionTargets(t.status, nextStatuses);
-  const isPublishedLocked = t.status === "published" && canWrite();
+  const statusLocked = !canChangeTemplateStatus(t.status) && (t.status === "published" || t.status === "archived");
   const q = t.quote || {};
   const root = document.getElementById("detail-root");
   const nutOptions = priceItemOptions(
@@ -1827,12 +761,15 @@ async function renderDetail(t) {
     .map((m) => `<option value="${escapeAttr(m)}">${escapeHtml(m)}</option>`)
     .join("");
 
-  const legacyPanelNote = (t.panel_note || "").trim()
-    ? `<div class="detail-section detail-section--legacy full">
-        <span class="detail-section-label">皮肤选配说明（历史记录）</span>
-        <div class="detail-legacy-note">${escapeHtml(t.panel_note)}</div>
-      </div>`
-    : "";
+  const coverOpts = buildCoverOptions(t);
+  const coverSelect = coverOpts.length
+    ? `<label>封面来源<select id="d-cover-source">${coverOpts
+        .map(
+          (o) =>
+            `<option value="${escapeAttr(o.value)}" ${t.cover_source === o.value ? "selected" : ""}>${escapeHtml(o.label)}</option>`
+        )
+        .join("")}</select></label>`
+    : `<p class="hint">上传实拍或效果图后可选择封面</p>`;
 
   root.innerHTML = `
     ${hasPriceItemIssues(t) ? '<div class="price-missing-banner">部分报价行引用的单价库条目已失效，请尽快在下方清单中更新对应条目。</div>' : ""}
@@ -1852,21 +789,16 @@ async function renderDetail(t) {
       ${
         t.status === "pending_review"
           ? '<p class="hint">请在下方的 <strong>审核发布</strong> 区域完成 checklist 并发布。</p>'
-          : isPublishedLocked
-            ? `<p class="hint">当前<strong>已发布</strong>：除标签外不可修改。需改其它内容请先<strong>下架</strong>，改完后重新审核上架（版本 +0.1）；更换 skp 模型时版本 +1。</p>
-              <div class="status-actions">
-                <button type="button" class="btn" data-status="archived">下架</button>
-              </div>`
-            : t.status === "archived" && canChangeTemplateStatus(t.status)
-              ? `<p class="hint">当前已下架。点击「重新上架」将进入<strong>待审核</strong>，请在下方 <strong>审核发布</strong> 完成 checklist 后发布（版本 +0.1）。</p>
-              <div class="status-actions">
-                <button type="button" class="btn primary" data-relist-template>重新上架</button>
-              </div>`
-            : statusActions.length
-              ? `<div class="status-actions">${statusActions
+          : statusLocked
+            ? '<p class="hint">当前为「' +
+              escapeHtml(meta.statusLabels[t.status]) +
+              "」，仅管理员可修改状态。</p>"
+            : nextStatuses.length
+              ? `<div class="status-actions">${nextStatuses
+                  .filter((s) => s !== "published")
                   .map(
                     (s) =>
-                      `<button type="button" class="btn primary" data-status="${s}">${escapeHtml(getStatusActionLabel(s, t.status))}</button>`
+                      `<button type="button" class="btn primary" data-status="${s}">→ ${meta.statusLabels[s]}</button>`
                   )
                   .join("")}</div>`
               : '<p class="hint">当前状态无可推进的下一步。</p>'
@@ -1875,42 +807,28 @@ async function renderDetail(t) {
 
     ${renderAuditPanel(t)}
 
-    <div class="card detail-form">
-      <h3>基本信息</h3>
-      <div class="detail-section detail-section--grid3">
-        <label>名称<input id="d-name" value="${escapeAttr(t.name)}" /></label>
-        <label>负责人<input id="d-assignee" value="${escapeAttr(t.assignee)}" readonly title="登记时自动拾取" /></label>
-        <label>版本<input id="d-version" value="${escapeAttr(t.version)}" readonly title="审核上架 +0.1；更换 skp 模型 +1" /></label>
-      </div>
-      <div class="detail-section detail-section--grid3">
-        <span class="detail-section-label detail-section-label--inline">尺寸</span>
-        <label>宽 mm<input id="d-w" type="number" value="${t.width_mm ?? ""}" /></label>
-        <label>深 mm<input id="d-d" type="number" value="${t.depth_mm ?? ""}" /></label>
-        <label>高 mm<input id="d-h" type="number" value="${t.height_mm ?? ""}" /></label>
-      </div>
-      <div class="detail-section detail-section--full">
-        <label class="field-stacked">一句话卖点<input id="d-liner" value="${escapeAttr(t.one_liner)}" /></label>
-      </div>
-      ${legacyPanelNote}
-      <div class="detail-section detail-section--full">
-        <label class="field-stacked">报价口径<textarea id="d-quote-note" rows="2">${escapeHtml(t.quote_note)}</textarea></label>
-      </div>
-      <div class="detail-section detail-section--grid2">
-        <label>参考价下限（留空自动）<input id="d-price-min" type="number" value="${t.price_override_min ?? ""}" /></label>
-        <label>参考价上限（留空自动）<input id="d-price-max" type="number" value="${t.price_override_max ?? ""}" /></label>
-      </div>
-      <div class="detail-section detail-section--full">
-        <label class="checkbox-chip${t.skin_upgrade_enabled ? " is-checked" : ""}">
-          <input type="checkbox" id="d-skin-upgrade" ${t.skin_upgrade_enabled ? "checked" : ""} />
-          <span class="checkbox-chip-text">可定制</span>
-        </label>
-      </div>
-      ${renderCoverSourcePicker(t)}
-      <div class="detail-section detail-section--full">
-        <label class="field-stacked">内部备注<textarea id="d-note" rows="2">${escapeHtml(t.internal_note)}</textarea></label>
-      </div>
-      ${canWrite() ? renderDetailTagField() : renderDetailTagReadonly(t.tags)}
-      <div class="form-actions"><button type="button" class="btn primary" id="save-detail">${isPublishedLocked ? "保存标签" : "保存基本信息"}</button></div>
+    <div class="card detail-grid">
+      <h3 class="full">基本信息</h3>
+      <label>名称<input id="d-name" value="${escapeAttr(t.name)}" /></label>
+      <label>负责人<input id="d-assignee" value="${escapeAttr(t.assignee)}" readonly title="登记时自动拾取" /></label>
+      <label>宽 mm<input id="d-w" type="number" value="${t.width_mm ?? ""}" /></label>
+      <label>深 mm<input id="d-d" type="number" value="${t.depth_mm ?? ""}" /></label>
+      <label>高 mm<input id="d-h" type="number" value="${t.height_mm ?? ""}" /></label>
+      <label>版本<input id="d-version" value="${escapeAttr(t.version)}" /></label>
+      <label class="full">一句话卖点<input id="d-liner" value="${escapeAttr(t.one_liner)}" /></label>
+      <label class="full">皮肤选配说明<textarea id="d-panel-note" rows="2">${escapeHtml(t.panel_note)}</textarea></label>
+      <label class="full">报价口径<textarea id="d-quote-note" rows="2">${escapeHtml(t.quote_note)}</textarea></label>
+      <label>参考价下限（留空自动）<input id="d-price-min" type="number" value="${t.price_override_min ?? ""}" /></label>
+      <label>参考价上限（留空自动）<input id="d-price-max" type="number" value="${t.price_override_max ?? ""}" /></label>
+      <label><input type="checkbox" id="d-skin-upgrade" ${t.skin_upgrade_enabled ? "checked" : ""} /> 可升级（皮肤色差区间）</label>
+      ${coverSelect}
+      <label class="full">询单表单链接<input id="d-inquiry-url" value="${escapeAttr(t.inquiry_form_url)}" /></label>
+      <label class="full">内部备注<textarea id="d-note" rows="2">${escapeHtml(t.internal_note)}</textarea></label>
+      <fieldset class="full chip-field">
+        <legend>标签</legend>
+        <div id="detail-tags-box" class="chips"></div>
+      </fieldset>
+      <div class="full form-actions"><button type="button" class="btn primary" id="save-detail">保存基本信息</button></div>
     </div>
 
     <div class="card" id="detail-assets-card">
@@ -1970,7 +888,6 @@ async function renderDetail(t) {
       <div class="quote-panel ${activeQuoteTab === "profiles" ? "active" : ""}" data-quote-panel="profiles">
         <p class="formula-hint">${escapeHtml(meta.profileFormulaNote || "")}</p>
         <form id="profile-add-form" class="profile-add">
-          <label>颜色<select name="color" required>${profileColorSelectHtml(meta.profileColors?.[0])}</select></label>
           <label>长度(in)<input name="length_inch" type="number" step="0.1" required placeholder="如 31.1" /></label>
           <label>数量<input name="qty" type="number" step="1" value="1" /></label>
           <label>系数<input name="coefficient" type="number" step="0.01" value="1" /></label>
@@ -2061,31 +978,25 @@ async function renderDetail(t) {
   `;
 
   stripDetailEditing(root);
-  detailTemplateTags = [...(t.tags || [])];
+  selectedTags = new Set(t.tags || []);
+  if (document.getElementById("detail-tags-box")) {
+    renderChips("detail-tags-box", meta.tags, selectedTags);
+  }
 
   if (!canWrite()) {
     renderBomTable(t.bom || []);
     return;
   }
 
-  if (isPublishedLocked) {
-    applyPublishedReadOnly(root);
-  }
-
-  document.getElementById("save-detail")?.addEventListener("click", () => saveDetail(t.id, t.status));
-  bindDetailTagEditor();
+  document.getElementById("save-detail").addEventListener("click", () => saveDetail(t.id));
   root.querySelectorAll("[data-status]").forEach((btn) => {
-    btn.addEventListener("click", () => updateStatus(t.id, btn.dataset.status, t.status));
+    btn.addEventListener("click", () => updateStatus(t.id, btn.dataset.status));
   });
-  root.querySelector("[data-relist-template]")?.addEventListener("click", () => requestRelistTemplate(t.id));
 
-  if (canEditTemplateContent(t)) {
-    initDetailDropZone({ zoneId: "drop-zone-photo", kind: "photo", multiple: true, templateId: t.id });
-    initDetailDropZone({ zoneId: "drop-zone-effect", kind: "effect", multiple: true, templateId: t.id });
-    initDetailDropZone({ zoneId: "drop-zone-render", kind: "render", multiple: true, templateId: t.id });
-    initDetailDropZone({ zoneId: "drop-zone-skp", kind: "skp", multiple: false, templateId: t.id });
-    bindCoverSourcePicker(t.id);
-  }
+  initDetailDropZone({ zoneId: "drop-zone-photo", kind: "photo", multiple: true, templateId: t.id });
+  initDetailDropZone({ zoneId: "drop-zone-effect", kind: "effect", multiple: true, templateId: t.id });
+  initDetailDropZone({ zoneId: "drop-zone-render", kind: "render", multiple: true, templateId: t.id });
+  initDetailDropZone({ zoneId: "drop-zone-skp", kind: "skp", multiple: false, templateId: t.id });
 
   const approveBtn = document.getElementById("audit-approve");
   if (approveBtn) {
@@ -2095,12 +1006,17 @@ async function renderDetail(t) {
     submitAudit(t.id, "reject", "pending_quote")
   );
 
-  if (canEditTemplateContent(t)) {
-  const skinUpgrade = document.getElementById("d-skin-upgrade");
-  const skinChip = skinUpgrade?.closest(".checkbox-chip");
-  skinUpgrade?.addEventListener("change", () => {
-    skinChip?.classList.toggle("is-checked", skinUpgrade.checked);
-  });
+  const coverSel = document.getElementById("d-cover-source");
+  if (coverSel) {
+    coverSel.addEventListener("change", async () => {
+      await api(`/api/templates/${t.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ cover_source: coverSel.value })
+      });
+      toast("封面已更新");
+      openDetail(t.id);
+    });
+  }
 
   root.querySelectorAll(".quote-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -2161,32 +1077,12 @@ async function renderDetail(t) {
     e.preventDefault();
     const manual = document.getElementById("hardware-manual-toggle")?.checked;
     const fd = new FormData(e.target);
-    let body;
-    if (manual) {
-      body = {
-        manual: true,
-        label: fd.get("label"),
-        spec: fd.get("spec"),
-        unit: fd.get("unit"),
-        unit_price: fd.get("unit_price"),
-        qty: fd.get("qty")
-      };
-    } else {
-      const priceItemId = fd.get("price_item_id");
-      if (!priceItemId) {
-        toast("请从单价库选择五金配件", true);
-        return;
-      }
-      body = { price_item_id: Number(priceItemId), qty: fd.get("qty") || 1 };
-    }
-    try {
-      await api(`/api/templates/${t.id}/hardware`, { method: "POST", body: JSON.stringify(body) });
-      toast("五金已添加");
-      activeQuoteTab = "hardware";
-      openDetail(t.id);
-    } catch (err) {
-      toast(err.message, true);
-    }
+    const body = manual
+      ? { manual: true, label: fd.get("label"), spec: fd.get("spec"), unit: fd.get("unit"), unit_price: fd.get("unit_price"), qty: fd.get("qty") }
+      : Object.fromEntries(fd.entries());
+    await api(`/api/templates/${t.id}/hardware`, { method: "POST", body: JSON.stringify(body) });
+    toast("五金已添加");
+    openDetail(t.id);
   });
 
   setupPanelCascade(panelFilters);
@@ -2279,22 +1175,8 @@ async function renderDetail(t) {
       openDetail(t.id);
     });
   });
-  }
 
   renderBomTable(t.bom || []);
-}
-
-function applyPublishedReadOnly(root) {
-  root.querySelector("#detail-assets-card")?.remove();
-  root.querySelectorAll(".quote-panel form, #bom-add-form").forEach((el) => el.remove());
-  root.querySelectorAll(".manual-toggle").forEach((el) => el.remove());
-  root.querySelectorAll("[data-del-profile], [data-del-nut], [data-del-hardware], [data-del-panel]").forEach(
-    (btn) => btn.remove()
-  );
-  root.querySelectorAll("input, select, textarea").forEach((el) => {
-    if (el.closest(".tag-editor-field")) return;
-    el.disabled = true;
-  });
 }
 
 function stripDetailEditing(root) {
@@ -2569,33 +1451,27 @@ function bindLinkResolver(input) {
   });
 }
 
-async function saveDetail(id, templateStatus) {
+async function saveDetail(id) {
+  const body = {
+    name: document.getElementById("d-name").value,
+    assignee: document.getElementById("d-assignee").value,
+    width_mm: numOrNull(document.getElementById("d-w").value),
+    depth_mm: numOrNull(document.getElementById("d-d").value),
+    height_mm: numOrNull(document.getElementById("d-h").value),
+    version: document.getElementById("d-version").value,
+    one_liner: document.getElementById("d-liner").value,
+    panel_note: document.getElementById("d-panel-note").value,
+    quote_note: document.getElementById("d-quote-note").value,
+    price_override_min: numOrNull(document.getElementById("d-price-min").value),
+    price_override_max: numOrNull(document.getElementById("d-price-max").value),
+    skin_upgrade_enabled: document.getElementById("d-skin-upgrade").checked,
+    inquiry_form_url: document.getElementById("d-inquiry-url").value,
+    internal_note: document.getElementById("d-note").value,
+    tags: [...selectedTags]
+  };
+  const coverSel = document.getElementById("d-cover-source");
+  if (coverSel) body.cover_source = coverSel.value;
   try {
-    if (templateStatus === "published") {
-      await api(`/api/templates/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ tags: [...detailTemplateTags] })
-      });
-      toast("标签已保存");
-      openDetail(id);
-      return;
-    }
-    const body = {
-      name: document.getElementById("d-name").value,
-      assignee: document.getElementById("d-assignee").value,
-      width_mm: numOrNull(document.getElementById("d-w").value),
-      depth_mm: numOrNull(document.getElementById("d-d").value),
-      height_mm: numOrNull(document.getElementById("d-h").value),
-      one_liner: document.getElementById("d-liner").value,
-      quote_note: document.getElementById("d-quote-note").value,
-      price_override_min: numOrNull(document.getElementById("d-price-min").value),
-      price_override_max: numOrNull(document.getElementById("d-price-max").value),
-      skin_upgrade_enabled: document.getElementById("d-skin-upgrade").checked,
-      internal_note: document.getElementById("d-note").value,
-      tags: [...detailTemplateTags]
-    };
-    const coverSel = document.getElementById("d-cover-source");
-    if (coverSel) body.cover_source = coverSel.value;
     await api(`/api/templates/${id}`, { method: "PATCH", body: JSON.stringify(body) });
     toast("已保存");
     openDetail(id);
@@ -2610,33 +1486,11 @@ function numOrNull(v) {
   return Number.isNaN(n) ? null : n;
 }
 
-async function updateStatus(id, status, currentStatus) {
-  if (currentStatus === "published" && status === "archived") {
-    const ok = confirm(
-      "确认下架？下架后可修改除标签外的内容；修改完成须重新审核上架（版本 +0.1）。更换 skp 模型时版本 +1。"
-    );
-    if (!ok) return;
-  }
+async function updateStatus(id, status) {
   try {
     await api(`/api/templates/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-    toast(status === "archived" ? "已下架，可继续编辑后重新提交审核" : `状态已更新为：${meta.statusLabels[status]}`);
+    toast(`状态已更新为：${meta.statusLabels[status]}`);
     openDetail(id);
-  } catch (e) {
-    toast(e.message, true);
-  }
-}
-
-async function requestRelistTemplate(id) {
-  try {
-    await api(`/api/templates/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "pending_review" })
-    });
-    toast("已进入待审核，请在下方「审核发布」完成 checklist 后发布");
-    await openDetail(id);
-    requestAnimationFrame(() => {
-      document.querySelector(".audit-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   } catch (e) {
     toast(e.message, true);
   }
@@ -2716,7 +1570,17 @@ async function refreshDetailAssets(id) {
   const renderGal = document.getElementById("detail-render-gallery");
   if (renderGal) renderGal.innerHTML = renderImageGallery(t.render_images);
 
-  refreshCoverSourcePicker(t, id, document.getElementById("d-cover-source")?.value);
+  const coverSel = document.getElementById("d-cover-source");
+  if (coverSel) {
+    const opts = buildCoverOptions(t);
+    const prev = coverSel.value;
+    coverSel.innerHTML = opts
+      .map(
+        (o) =>
+          `<option value="${escapeAttr(o.value)}" ${(t.cover_source === o.value || prev === o.value) ? "selected" : ""}>${escapeHtml(o.label)}</option>`
+      )
+      .join("");
+  }
 }
 
 function initDetailDropZone({ zoneId, kind, multiple, templateId }) {
@@ -2837,6 +1701,139 @@ function initGenericDropZone({ zoneId, onFiles }) {
     e.preventDefault();
     zone.classList.remove("is-dragover");
     handleFiles(e.dataTransfer?.files);
+  });
+}
+
+const priceAddImageFieldHtml = `<label class="price-item-image-field">
+  图片（可选）
+  ${renderDropZoneHtml({ id: "price-add-image-drop", title: "条目图片", hint: "拖拽图片或", accept: "image/*", extraClass: "price-item-image-drop" })}
+</label>`;
+
+function renderPriceItemImageCell(r) {
+  if (r.image_url) {
+    return `<td class="col-price-image">
+      <div class="price-item-image-cell has-image">
+        <a href="${escapeAttr(r.image_url)}" target="_blank" rel="noopener"><img class="price-item-thumb" src="${escapeAttr(r.image_url)}" alt="" /></a>
+        <button type="button" class="btn linkish btn-clear-price-image" data-clear-price-image="${r.id}" title="清除图片">清除</button>
+      </div>
+    </td>`;
+  }
+  return `<td class="col-price-image">
+    <div class="drop-zone price-item-image-drop mini" data-price-image-id="${r.id}" tabindex="0" role="button" aria-label="上传图片">
+      <span class="price-item-image-drop-label">上传</span>
+      <input type="file" accept="image/*" hidden />
+    </div>
+  </td>`;
+}
+
+function isImageFile(file) {
+  return /^image\//i.test(file.type) || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+}
+
+async function uploadPriceItemImage(itemId, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`/api/price-items/${itemId}/image`, {
+    method: "POST",
+    credentials: "include",
+    body: fd
+  });
+  const ct = res.headers.get("content-type") || "";
+  const data = ct.includes("application/json") ? await res.json() : { error: await res.text() };
+  if (!res.ok) throw new Error(data.error || "上传失败");
+  return data;
+}
+
+function initPriceItemAddImageDrop() {
+  priceAddImageFile = null;
+  const zone = document.getElementById("price-add-image-drop");
+  if (!zone) return;
+  initGenericDropZone({
+    zoneId: "price-add-image-drop",
+    onFiles: async (fileList) => {
+      const file = fileList?.[0];
+      if (!file) return;
+      if (!isImageFile(file)) {
+        toast("请上传图片文件", true);
+        return;
+      }
+      priceAddImageFile = file;
+      zone.classList.add("has-file");
+      const hint = zone.querySelector(".drop-zone-hint");
+      if (hint) hint.textContent = file.name;
+    }
+  });
+}
+
+function initPriceItemImageDropZones(container) {
+  if (!container) return;
+  container.querySelectorAll("[data-price-image-id]").forEach((zone) => {
+    const itemId = zone.dataset.priceImageId;
+    const input = zone.querySelector('input[type="file"]');
+
+    async function handleFiles(fileList) {
+      const file = fileList?.[0];
+      if (!file) return;
+      if (!isImageFile(file)) {
+        toast("请上传图片文件", true);
+        return;
+      }
+      try {
+        await uploadPriceItemImage(itemId, file);
+        toast("图片已更新");
+        loadPrices(priceLibCategory);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    zone.addEventListener("click", (e) => {
+      e.stopPropagation();
+      input?.click();
+    });
+
+    zone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        input?.click();
+      }
+    });
+
+    input?.addEventListener("change", () => {
+      handleFiles(input.files);
+      input.value = "";
+    });
+
+    zone.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      zone.classList.add("is-dragover");
+    });
+    zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      zone.classList.add("is-dragover");
+    });
+    zone.addEventListener("dragleave", (e) => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove("is-dragover");
+    });
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("is-dragover");
+      handleFiles(e.dataTransfer?.files);
+    });
+  });
+
+  container.querySelectorAll("[data-clear-price-image]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("清除该条目的图片？")) return;
+      try {
+        await api(`/api/price-items/${btn.dataset.clearPriceImage}/image`, { method: "DELETE" });
+        toast("图片已清除");
+        loadPrices(priceLibCategory);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
   });
 }
 
@@ -2992,21 +1989,21 @@ function setupPendingCoverDropZone(zoneId, previewId) {
 
 function setupManualToggle(toggleId, selectId, manualId) {
   const toggle = document.getElementById(toggleId);
+  if (!toggle) return;
   const selectFields = document.getElementById(selectId);
   const manualFields = document.getElementById(manualId);
-  if (!selectFields || !manualFields) return;
   function sync() {
-    const manual = !!toggle?.checked;
-    selectFields.classList.toggle("hidden", manual);
-    manualFields.classList.toggle("hidden", !manual);
-    selectFields.querySelectorAll("input, select").forEach((el) => {
+    const manual = toggle.checked;
+    selectFields?.classList.toggle("hidden", manual);
+    manualFields?.classList.toggle("hidden", !manual);
+    selectFields?.querySelectorAll("input, select").forEach((el) => {
       el.disabled = manual;
     });
-    manualFields.querySelectorAll("input, select").forEach((el) => {
+    manualFields?.querySelectorAll("input, select").forEach((el) => {
       el.disabled = !manual;
     });
   }
-  toggle?.addEventListener("change", sync);
+  toggle.addEventListener("change", sync);
   sync();
 }
 
@@ -3190,6 +2187,7 @@ function applyLastPanelSelection(panelFilters) {
 
 let priceLibCategory = "profile";
 let panelSort = { field: null, dir: "asc" };
+let priceAddImageFile = null;
 let listSort = { field: null, dir: null };
 
 const STATUS_SORT_ORDER = ["draft", "pending_quote", "pending_review", "published", "archived"];
@@ -3270,11 +2268,9 @@ function renderSortableTh(label, field, current, thClass = "") {
 function renderPriceForm(category, extra = {}) {
   const wrap = document.getElementById("price-form-wrap");
   if (category === "profile") {
-    const formula = extra.formula || extra;
-    const profileColors = extra.profileColors || [];
+    const formula = extra;
     wrap.innerHTML = `<div class="profile-formula-card">
       <p class="formula-hint">${escapeHtml(meta.profileFormulaNote || "")}</p>
-      <p class="hint">型材颜色仅用于清单标注，<strong>银色与木色单价相同</strong>（均按上方公式计算）。</p>
       ${canAdmin() ? `<form id="profile-formula-form" class="hardware-add">
         <label>rate<input name="rate" type="number" step="0.001" value="${formula.rate}" required /></label>
         <label>base<input name="base" type="number" step="1" value="${formula.base}" required /></label>
@@ -3285,12 +2281,6 @@ function renderPriceForm(category, extra = {}) {
         <input id="profile-formula-preview-out" readonly placeholder="自动计算" />
       </div>
       ${formula.updated_at ? `<p class="hint">最后更新：${formula.updated_at.slice(0, 16)}${formula.updated_by ? " · " + escapeHtml(formula.updated_by) : ""}</p>` : ""}
-      <h4 class="profile-colors-heading">型材颜色</h4>
-      ${canManagePrices() ? `<form id="profile-color-add-form" class="hardware-add profile-color-add">
-        <label>颜色名称<input name="name" required placeholder="如 黑色" maxlength="32" /></label>
-        <button type="submit" class="btn primary">添加颜色</button>
-      </form>` : ""}
-      <p class="hint">管理员可添加或停用颜色；停用后不可在新行中选择，已有行仍保留原颜色。</p>
     </div>`;
 
     const lenInput = document.getElementById("profile-formula-preview-len");
@@ -3317,21 +2307,6 @@ function renderPriceForm(category, extra = {}) {
         body: JSON.stringify({ rate: Number(fd.get("rate")), base: Number(fd.get("base")) })
       });
       toast("已更新，所有模板型材报价将按新公式计算");
-      loadPrices("profile");
-    });
-
-    document.getElementById("profile-color-add-form")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const name = (fd.get("name") || "").toString().trim();
-      if (!name) {
-        toast("请填写颜色名称", true);
-        return;
-      }
-      await api("/api/profile-colors", { method: "POST", body: JSON.stringify({ name }) });
-      toast("已添加型材颜色");
-      const m = await api("/api/meta");
-      meta.profileColors = m.profileColors;
       loadPrices("profile");
     });
     return;
@@ -3361,6 +2336,7 @@ function renderPriceForm(category, extra = {}) {
       <label>型号<input name="nut_model" required placeholder="OL2525" /></label>
       <label>对外单价<input name="unit_price" type="number" step="0.01" required /></label>
       <label>对内单价<input name="unit_price_internal" type="number" step="0.01" placeholder="默认对外×0.5" /></label>
+      ${priceAddImageFieldHtml}
       <button type="submit" class="btn primary">添加六通</button>
     </form>`;
   } else if (category === "hardware") {
@@ -3372,6 +2348,7 @@ function renderPriceForm(category, extra = {}) {
       <label>对内单价<input name="unit_price_internal" type="number" step="0.01" placeholder="默认对外×0.5" /></label>
       <label>链接<input name="link" id="hardware-link-input" placeholder="采购链接（可选）" /></label>
       <label>供应商<input name="supplier" required placeholder="必填" /></label>
+      ${priceAddImageFieldHtml}
       <button type="submit" class="btn primary">添加五金</button>
     </form>`;
   } else {
@@ -3444,6 +2421,7 @@ function renderPriceForm(category, extra = {}) {
   const addForm = document.getElementById("price-add-form");
   bindInternalPriceAutoFill(addForm);
   bindLinkResolver(document.getElementById("hardware-link-input"));
+  if (category === "nut" || category === "hardware") initPriceItemAddImageDrop();
 
   addForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -3471,7 +2449,17 @@ function renderPriceForm(category, extra = {}) {
       toast("请填写供应商", true);
       return;
     }
-    await api("/api/price-items", { method: "POST", body: JSON.stringify(body) });
+    const created = await api("/api/price-items", { method: "POST", body: JSON.stringify(body) });
+    if (priceAddImageFile && created?.id) {
+      try {
+        await uploadPriceItemImage(created.id, priceAddImageFile);
+      } catch (err) {
+        toast(`条目已添加，但图片上传失败：${err.message}`, true);
+        loadPrices(category);
+        return;
+      }
+    }
+    priceAddImageFile = null;
     toast("已添加到单价库");
     loadPrices(category);
   });
@@ -3494,44 +2482,9 @@ async function loadPrices(category = priceLibCategory) {
   const wrap = document.getElementById("price-table-wrap");
 
   if (category === "profile") {
-    const [formula, profileColors] = await Promise.all([
-      api("/api/pricing/profile-formula"),
-      api("/api/profile-colors?all=1")
-    ]);
-    renderPriceForm(category, { formula, profileColors });
-    wrap.innerHTML = profileColors.length
-      ? `<table class="profile-colors-table"><thead><tr>
-        <th class="seq-col">#</th><th>颜色</th><th>状态</th><th>引用行数</th><th>操作</th>
-      </tr></thead><tbody>${profileColors
-        .map(
-          (c, i) => `<tr class="${c.active ? "" : "row-inactive"}">
-          <td class="seq-col">${i + 1}</td>
-          <td>${escapeHtml(c.name)}</td>
-          <td>${c.active ? "启用" : "已停用"}</td>
-          <td>${c.usage_count ?? 0}</td>
-          <td>${
-            canManagePrices()
-              ? `<button type="button" class="btn" data-profile-color-toggle="${c.id}" data-active="${c.active ? "0" : "1"}">${c.active ? "停用" : "启用"}</button>`
-              : "—"
-          }</td>
-        </tr>`
-        )
-        .join("")}</tbody></table>`
-      : '<p class="hint">暂无型材颜色，请添加。</p>';
-    wrap.querySelectorAll("[data-profile-color-toggle]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.dataset.profileColorToggle;
-        const active = btn.dataset.active === "1";
-        await api(`/api/profile-colors/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ active })
-        });
-        toast(active ? "已启用" : "已停用");
-        const m = await api("/api/meta");
-        meta.profileColors = m.profileColors;
-        loadPrices("profile");
-      });
-    });
+    const formula = await api("/api/pricing/profile-formula");
+    renderPriceForm(category, formula);
+    wrap.innerHTML = "";
     return;
   }
 
@@ -3643,10 +2596,11 @@ async function loadPrices(category = priceLibCategory) {
   renderPriceForm(category, category === "panel" ? rows : []);
 
   if (category === "nut") {
-    wrap.innerHTML = `<table><thead><tr><th class="seq-col">#</th><th>名称</th><th>型号</th><th>对外价</th><th>对内价</th><th>启用</th><th></th></tr></thead><tbody>${rows
+    wrap.innerHTML = `<table><thead><tr><th class="seq-col">#</th><th class="col-price-image">图片</th><th>名称</th><th>型号</th><th>对外价</th><th>对内价</th><th>启用</th><th></th></tr></thead><tbody>${rows
       .map(
         (r, i) => `<tr>
         <td class="seq-col">${i + 1}</td>
+        ${renderPriceItemImageCell(r)}
         <td><input class="input-full" value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" /></td>
         <td><input value="${escapeAttr(r.nut_model)}" data-field="nut_model" data-id="${r.id}" /></td>
         <td><input class="input-narrow" type="number" step="0.01" value="${r.unit_price}" data-field="unit_price" data-id="${r.id}" /></td>
@@ -3656,9 +2610,11 @@ async function loadPrices(category = priceLibCategory) {
       </tr>`
       )
       .join("")}</tbody></table>`;
+    initPriceItemImageDropZones(wrap);
   } else if (category === "hardware") {
     wrap.innerHTML = `<table class="price-lib-table price-lib-hardware"><thead><tr>
       <th class="seq-col">#</th>
+      <th class="col-price-image">图片</th>
       <th class="col-hw-name">名称</th>
       <th class="col-hw-spec">规格</th>
       <th class="col-hw-unit">单位</th>
@@ -3671,6 +2627,7 @@ async function loadPrices(category = priceLibCategory) {
       .map(
         (r, i) => `<tr>
         <td class="seq-col">${i + 1}</td>
+        ${renderPriceItemImageCell(r)}
         <td class="col-hw-name"><input value="${escapeAttr(r.label)}" data-field="label" data-id="${r.id}" /></td>
         <td class="col-hw-spec"><input value="${escapeAttr(r.spec)}" data-field="spec" data-id="${r.id}" /></td>
         <td class="col-hw-unit">${r.unit}</td>
@@ -3684,6 +2641,7 @@ async function loadPrices(category = priceLibCategory) {
       )
       .join("")}</tbody></table>`;
     wrap.querySelectorAll("[data-link-field]").forEach((el) => bindLinkResolver(el));
+    initPriceItemImageDropZones(wrap);
   } else {
     const sorted = sortPanelPriceRows(rows, panelSort.field, panelSort.dir);
     wrap.innerHTML = `<table class="price-lib-table price-lib-panel"><thead><tr>
@@ -3791,7 +2749,6 @@ function initNav() {
       if (view === "list") await loadList();
       if (view === "published") await loadPublished();
       if (view === "scenarios") await loadScenarios();
-      if (view === "tags") await loadTagCloud();
       if (view === "prices") await loadPrices();
       if (view === "users") await loadUsers();
     });
@@ -3970,7 +2927,6 @@ function initListFilters() {
   document.getElementById("search-input").addEventListener("input", debounce(loadList, 300));
   document.getElementById("filter-status").addEventListener("change", loadList);
   document.getElementById("filter-scenario").addEventListener("change", loadList);
-  bindListTagFilter();
 }
 
 function initPriceLibrary() {

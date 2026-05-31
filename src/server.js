@@ -16,6 +16,8 @@ const {
   createPriceItem,
   updatePriceItem,
   deletePriceItem,
+  setPriceItemImage,
+  clearPriceItemImage,
   getPanelFilters,
   resolvePanelPricing,
   enrichPanelLine,
@@ -64,7 +66,16 @@ const {
   assertEditableById,
   validatePublishedTemplatePatch
 } = require("./template-guard");
-const { bumpMinor, bumpMajor, normalizeVersion } = require("./version");
+const { createVersionLogForPublish, listVersionLogs } = require("./version-log");
+const {
+  exportFormJson,
+  exportFormZipBuffer,
+  zipFilename,
+  jsonFilename,
+  parseUploadBuffer,
+  previewDeepeningForm,
+  applyDeepeningForm
+} = require("./deepening-form");
 const { profileFactoryPrice, profileLineTotal } = require("./pricing");
 const { nextTemplateCode, resolveSkpBaseName } = require("./id");
 const { saveAuditArchive } = require("./audit");
@@ -195,6 +206,15 @@ const registerUpload = multer({
   fileFilter(_req, file, cb) {
     if (/\.skp$/i.test(file.originalname)) cb(null, true);
     else cb(new Error("请上传 .skp 文件"));
+  }
+});
+
+const formUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (/\.(json|zip)$/i.test(file.originalname)) cb(null, true);
+    else cb(new Error("请上传 .json 或 .zip 文件"));
   }
 });
 
@@ -372,6 +392,36 @@ function createScenarioPickerUpload() {
       }
     }),
     limits: { fileSize: 30 * 1024 * 1024 },
+    fileFilter(_req, file, cb) {
+      const okExt = /\.(jpe?g|png|webp|gif)$/i.test(file.originalname);
+      const okMime = /^image\//i.test(file.mimetype || "");
+      if (okExt || okMime) cb(null, true);
+      else cb(new Error("请上传图片文件"));
+    }
+  });
+}
+
+function createPriceItemImageUpload() {
+  return multer({
+    storage: multer.diskStorage({
+      destination(req, _file, cb) {
+        const row = db.prepare("SELECT category FROM price_items WHERE id = ?").get(req.params.id);
+        if (!row) return cb(new Error("记录不存在"));
+        if (!["nut", "hardware"].includes(row.category)) return cb(new Error("仅六通/五金支持图片"));
+        const dir = path.join(UPLOADS_DIR, "price-items", row.category);
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename(req, file, cb) {
+        const row = db.prepare("SELECT label FROM price_items WHERE id = ?").get(req.params.id);
+        const safe = String(row?.label || "item")
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .slice(0, 40);
+        const ext = path.extname(file.originalname) || ".jpg";
+        cb(null, `${req.params.id}-${safe}${ext}`);
+      }
+    }),
+    limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter(_req, file, cb) {
       const okExt = /\.(jpe?g|png|webp|gif)$/i.test(file.originalname);
       const okMime = /^image\//i.test(file.mimetype || "");
@@ -574,6 +624,86 @@ app.get("/api/templates/:id", ...readAuth, (req, res) => {
   if (!template) return res.status(404).json({ error: "模板不存在" });
   res.json({ ...template, bom: getBomLines(db, template.id) });
 });
+
+app.get("/api/templates/:id/version-logs", ...readAuth, (req, res) => {
+  const template = getTemplate(db, req.params.id);
+  if (!template) return res.status(404).json({ error: "模板不存在" });
+  const rows = listVersionLogs(db, template.id).map((row) => ({
+    ...row,
+    changes: JSON.parse(row.changes_json || "{}")
+  }));
+  res.json(rows);
+});
+
+function deepeningFormDisposition(filename) {
+  const encoded = encodeURIComponent(filename);
+  const ascii = String(filename).replace(/[^\x20-\x7E]/g, "_") || "form";
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+app.get("/api/templates/:id/deepening-form.json", ...writeAuth, (req, res) => {
+  const template = getTemplate(db, req.params.id);
+  if (!template) return res.status(404).json({ error: "模板不存在" });
+  const empty = req.query.empty === "1";
+  const payload = exportFormJson(template, db, { empty });
+  const filename = jsonFilename(template.template_code);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", deepeningFormDisposition(filename));
+  res.send(JSON.stringify(payload, null, 2));
+});
+
+app.get("/api/templates/:id/deepening-form.zip", ...writeAuth, (req, res) => {
+  const template = getTemplate(db, req.params.id);
+  if (!template) return res.status(404).json({ error: "模板不存在" });
+  const empty = req.query.empty === "1";
+  const buf = exportFormZipBuffer(template, db, { empty });
+  const filename = zipFilename(template.template_code);
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", deepeningFormDisposition(filename));
+  res.send(buf);
+});
+
+function handleDeepeningFormUpload(apply) {
+  return (req, res) => {
+    const template = getTemplate(db, req.params.id);
+    if (!template) return res.status(404).json({ error: "模板不存在" });
+    if (apply) {
+      try {
+        assertEditableById(db, template.id);
+      } catch (err) {
+        return guardError(res, err);
+      }
+    }
+    if (!req.file?.buffer) return res.status(400).json({ error: "请上传 .json 或 .zip 文件" });
+    try {
+      const payload = parseUploadBuffer(req.file.buffer, req.file.originalname);
+      if (apply) {
+        const result = applyDeepeningForm(db, template, payload, req.user);
+        res.json({ template: getTemplate(db, template.id), ...result });
+      } else {
+        res.json(previewDeepeningForm(db, template, payload));
+      }
+    } catch (err) {
+      res.status(err.status || 500).json({
+        error: err.message || "处理失败",
+        details: err.details || null
+      });
+    }
+  };
+}
+
+app.post(
+  "/api/templates/:id/deepening-form/preview",
+  ...writeAuth,
+  formUpload.single("file"),
+  handleDeepeningFormUpload(false)
+);
+app.post(
+  "/api/templates/:id/deepening-form/apply",
+  ...writeAuth,
+  formUpload.single("file"),
+  handleDeepeningFormUpload(true)
+);
 
 app.get("/api/templates/:id/public-sheet.html", ...readAuth, (req, res) => {
   const template = getTemplate(db, req.params.id);
@@ -1376,6 +1506,28 @@ app.delete("/api/price-items/:id", ...priceAdmin, (req, res) => {
   }
 });
 
+app.post("/api/price-items/:id/image", ...priceAdmin, (req, res) => {
+  createPriceItemImageUpload().single("file")(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || "上传失败" });
+    if (!req.file) return res.status(400).json({ error: "请选择图片" });
+    try {
+      res.json(setPriceItemImage(db, req.params.id, req.file.path));
+    } catch (e) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(e.status || 400).json({ error: e.message });
+    }
+  });
+});
+
+app.delete("/api/price-items/:id/image", ...priceAdmin, (req, res) => {
+  try {
+    const item = clearPriceItemImage(db, req.params.id);
+    res.json(item);
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
+  }
+});
+
 app.post("/api/templates/:id/audit/approve", ...writeAuth, (req, res) => {
   const template = getTemplate(db, req.params.id);
   if (!template) return res.status(404).json({ error: "模板不存在" });
@@ -1392,10 +1544,14 @@ app.post("/api/templates/:id/audit/approve", ...writeAuth, (req, res) => {
 
   const auditor = req.user.display_name || req.user.username;
   try {
-    saveAuditArchive({ template, checklist, auditor, auditNote: audit_note });
-    const nextVersion = template.published_at
-      ? bumpMinor(template.version)
-      : normalizeVersion(template.version);
+    const auditResult = saveAuditArchive({ template, checklist, auditor, auditNote: audit_note });
+    const versionInfo = createVersionLogForPublish(db, {
+      template,
+      auditor,
+      auditNote: audit_note,
+      auditImageRel: auditResult.audit_image_rel
+    });
+
     db.prepare(
       `UPDATE templates SET
         status = 'published',
@@ -1406,7 +1562,7 @@ app.post("/api/templates/:id/audit/approve", ...writeAuth, (req, res) => {
         last_audit_at = datetime('now'),
         updated_at = datetime('now')
        WHERE id = ?`
-    ).run(nextVersion, audit_note.trim(), auditor, template.id);
+    ).run(versionInfo.version, audit_note.trim(), auditor, template.id);
     res.json(getTemplate(db, template.id));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1458,17 +1614,9 @@ app.post("/api/templates/:id/upload/:kind", ...writeAuth, (req, res) => {
       const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id);
       if (kind === "skp") {
         const skpUrl = toPublicUrl(`${row.template_code}/${row.template_code}.skp`);
-        const hadSkp = !!(row.skp_file && String(row.skp_file).trim());
-        if (hadSkp) {
-          const nextVersion = bumpMajor(row.version);
-          db.prepare(
-            "UPDATE templates SET skp_file = ?, version = ?, updated_at = datetime('now') WHERE id = ?"
-          ).run(skpUrl, nextVersion, template.id);
-        } else {
-          db.prepare(
-            "UPDATE templates SET skp_file = ?, updated_at = datetime('now') WHERE id = ?"
-          ).run(skpUrl, template.id);
-        }
+        db.prepare(
+          "UPDATE templates SET skp_file = ?, updated_at = datetime('now') WHERE id = ?"
+        ).run(skpUrl, template.id);
       }
       syncTemplateImages(db, db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id));
       res.json(getTemplate(db, template.id));

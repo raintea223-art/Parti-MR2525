@@ -1,8 +1,8 @@
 # MR2525 模板库协作 SOP
 
-> **版本**：一周固化版（v1.11）  
+> **版本**：一周固化版（v1.13）  
 > **适用系统**：[mr2525-template-catalog](../README.md)  
-> **关联文档**：[MR2525 五金结构体系说明](../../MR2525%20五金结构（可编辑语言）体系说明.md) · [**协作流程图 · 上手指南**](WORKFLOW.md)（系统内 **流程说明**） · [飞书搭建指南](FEISHU-SETUP.md) · [单价库微调](PRICE-LIB-UPDATES.md) · [模板列表](TEMPLATE-LIST-UPDATES.md) · [标签库](TAG-LIB-UPDATES.md) · [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md) · [模板图册](GALLERY-UPDATES.md)
+> **关联文档**：[MR2525 五金结构体系说明](../../MR2525%20五金结构（可编辑语言）体系说明.md) · [**协作流程图 · 上手指南**](WORKFLOW.md)（系统内 **流程说明**） · [**2026-06-04 升级摘要**](UPGRADE-20260604.md) · [飞书搭建指南](FEISHU-SETUP.md) · [单价库微调](PRICE-LIB-UPDATES.md) · [外包深化表单](DEEPENING-FORM-UPDATES.md) · [模板列表](TEMPLATE-LIST-UPDATES.md) · [标签库](TAG-LIB-UPDATES.md) · [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md) · [模板图册](GALLERY-UPDATES.md)
 
 ---
 
@@ -728,3 +728,5 @@ data/uploads/
 | v1.9 | 2026-06-02 | 型材颜色；单价库五金列宽；`quote_hardware.spec` 迁移（见 [PRICE-LIB-UPDATES](PRICE-LIB-UPDATES.md) §9–§10） |
 | v1.10 | 2026-06-02 | 已发布仅可改标签、下架按钮；版本审核 +0.1 / 换模型 +1（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §7） |
 | v1.11 | 2026-06-03 | 图册「下载手册」PDF、「下载清单」内部 CSV、批量打包（见 [GALLERY-UPDATES](GALLERY-UPDATES.md)） |
+| v1.12 | 2026-06-04 | 审核发布写入**版本历史**；详情版本历史卡片（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §12） |
+| v1.13 | 2026-06-04 | **外包深化表单**导出/导入；单价库六通/五金**图片**（见 [DEEPENING-FORM-UPDATES](DEEPENING-FORM-UPDATES.md)、[PRICE-LIB-UPDATES](PRICE-LIB-UPDATES.md) §13、[UPGRADE-20260604](UPGRADE-20260604.md)） |

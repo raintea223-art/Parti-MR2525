@@ -1,8 +1,8 @@
 # 单价库模块微调 · 实施说明
 
-> 实施日期：2026-05-28 — 2026-06-02  
+> 实施日期：2026-05-28 — 2026-06-04  
 > 状态：**已实施**  
-> 前端样式：`styles.css?v=20260602b`
+> 前端样式：`styles.css?v=20260604e`
 
 本文档记录单价库（**型材公式与颜色** / 六通 / 五金配件 / 板材 / 非标件 / **供应商库**）微调的需求、已确认决策与代码改动摘要。
 
@@ -169,6 +169,7 @@
 | `link` | TEXT | 五金采购链接（可选） |
 | `supplier` | TEXT | 供应商（五金/板材必填） |
 | `color_hex` | TEXT | 板材 RGB 色值（可选） |
+| `image_url` | TEXT | 六通/五金图片 URL（可选，2026-06-04） |
 
 `price_items_custom` 无新列；暴露已有 `unit_price_internal`、`note`。
 
@@ -219,6 +220,8 @@
 | GET | `/api/profile-colors` | 启用颜色列表；管理员 `?all=1` 含已停用 |
 | POST | `/api/profile-colors` | 管理员新增颜色 |
 | PATCH | `/api/profile-colors/:id` | 管理员启用 / 停用 |
+| POST | `/api/price-items/:id/image` | 上传六通/五金图片（multipart） |
+| DELETE | `/api/price-items/:id/image` | 清除六通/五金图片 |
 | GET | `/api/pricing/profile-formula` | 型材公式参数 |
 | PATCH | `/api/pricing/profile-formula` | 管理员更新公式 |
 
@@ -281,6 +284,7 @@
 - [模板编号规则](MR2525模板库协作SOP.md) §12 — `TPL-场景-序号-文件名`  
 - [模板图册](GALLERY-UPDATES.md) — 展示图、方案手册 PDF、内部清单 CSV 与批量下载
 - [场景库](SCENARIO-LIB-UPDATES.md) — 场景图标记、场景手册 PDF
+- [升级摘要 2026-06-04](UPGRADE-20260604.md)
 
 ---
 
@@ -322,3 +326,33 @@
 - 序号手动拖拽排序
 - 链接抓取真实店铺名（仅域名 → 平台名）
 - 六通 / 非标件 supplier 字段
+- **板材条目图片**（本次仅六通/五金）
+
+---
+
+## 13. 2026-06-04 · 六通 / 五金图片
+
+| 项 | 说明 |
+|----|------|
+| 范围 | **仅** `category` 为 `nut`、`hardware`；板材 Tab 无图片 |
+| 添加 | 表单旁可选拖拽区；提交后可补传 |
+| 列表 | 新增 **图片** 列：缩略图 / 迷你上传区 / **清除** |
+| DB | `price_items.image_url` TEXT DEFAULT `''`（`ensureColumn`） |
+| 存储 | `data/uploads/price-items/{nut\|hardware}/{id}-{名称}.ext` |
+| API | `POST /api/price-items/:id/image`（multipart `file`） |
+| API | `DELETE /api/price-items/:id/image` |
+| 权限 | 单价库管理员（`canManagePrices`） |
+| 删除条目 | 同时删除磁盘图片 |
+| 改价传播 | 改图 **不** 触发 `propagatePriceItemChange` |
+
+样式：`.price-item-thumb`、`.col-price-image`、`.price-item-image-drop`
+
+详见 [升级摘要](UPGRADE-20260604.md)。
+
+---
+
+## 14. 修订记录（续）
+
+| 日期 | 说明 |
+|------|------|
+| 2026-06-04 | 六通/五金图片（§13） |

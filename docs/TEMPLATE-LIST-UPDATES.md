@@ -89,6 +89,8 @@
 - [模板编号规则](MR2525模板库协作SOP.md) §12  
 - [协作流程图](WORKFLOW.md)  
 - [模板图册](GALLERY-UPDATES.md) — 手册 PDF、内部清单 CSV、批量下载  
+- [外包深化表单](DEEPENING-FORM-UPDATES.md)  
+- [升级摘要 2026-06-04](UPGRADE-20260604.md)  
 - [场景库](SCENARIO-LIB-UPDATES.md)  
 
 ---
@@ -152,3 +154,28 @@
 | 2026-05-31 | 详情状态「重新上架」流程（§7） |
 | 2026-06-01 | 多标签交集筛选（§10）；移除列表页 hint 文案 |
 | 2026-06-02 | 已发布只读（仅标签可改）、下架按钮、版本号规则（§7） |
+
+---
+
+## 12. 2026-06-04 · 版本历史
+
+| 项 | 说明 |
+|----|------|
+| 写入时机 | **仅** 审核「通过并发布」时 |
+| 表 | `template_version_logs`（版本、触发类型、变更 JSON、快照、审核备注/审核单路径） |
+| 触发类型 | `first_publish` / `re_publish_minor`（+0.1）/ `re_publish_major`（换 skp +1） |
+| 展示 | 详情 **版本历史** 卡片；可展开变更摘要 |
+| API | `GET /api/templates/:id/version-logs` |
+| 规则 | skp 上传时 **不再** 单独 bumpMajor；升版与写日志合一在 approve |
+
+模块：`src/version-log.js`；与 [§7 版本号](TEMPLATE-LIST-UPDATES.md) 规则一致。
+
+详见 [升级摘要](UPGRADE-20260604.md)。
+
+---
+
+## 13. 修订记录（续）
+
+| 日期 | 说明 |
+|------|------|
+| 2026-06-04 | 版本历史写库与详情展示（§12） |

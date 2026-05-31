@@ -666,7 +666,9 @@ flowchart LR
 | [docs/GALLERY-UPDATES.md](docs/GALLERY-UPDATES.md) | 图册导出 |
 | [docs/SCENARIO-LIB-UPDATES.md](docs/SCENARIO-LIB-UPDATES.md) | 场景库 |
 | [docs/TAG-LIB-UPDATES.md](docs/TAG-LIB-UPDATES.md) | 标签库 |
-| [docs/PRICE-LIB-UPDATES.md](docs/PRICE-LIB-UPDATES.md) | 单价库 |
+| [docs/PRICE-LIB-UPDATES.md](docs/PRICE-LIB-UPDATES.md) | 单价库（含 §13 六通/五金图片） |
+| [docs/DEEPENING-FORM-UPDATES.md](docs/DEEPENING-FORM-UPDATES.md) | 外包深化表单 |
+| [docs/UPGRADE-20260604.md](docs/UPGRADE-20260604.md) | 2026-06-04 升级摘要 |
 | [docs/DETAIL-BASIC-INFO-UPDATES.md](docs/DETAIL-BASIC-INFO-UPDATES.md) | 详情基本信息栏 |
 
 ---

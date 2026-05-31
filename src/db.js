@@ -255,6 +255,7 @@ function initSchema(db) {
   ensureColumn(db, "price_items", "link", "TEXT DEFAULT ''");
   ensureColumn(db, "price_items", "supplier", "TEXT DEFAULT ''");
   ensureColumn(db, "price_items", "color_hex", "TEXT DEFAULT ''");
+  ensureColumn(db, "price_items", "image_url", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "photo_images", "TEXT DEFAULT '[]'");
   ensureColumn(db, "templates", "effect_images", "TEXT DEFAULT '[]'");
   ensureColumn(db, "templates", "render_images", "TEXT DEFAULT '[]'");
@@ -354,6 +355,9 @@ function initSchema(db) {
 
   initTagsSchema(db);
   migrateTagsFromTemplates(db, TAGS);
+
+  const { initVersionLogSchema } = require("./version-log");
+  initVersionLogSchema(db);
 }
 
 function migrateScenarioMarkersNullableTemplate(db) {
