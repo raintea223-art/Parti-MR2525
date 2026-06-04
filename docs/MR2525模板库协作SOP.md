@@ -2,7 +2,7 @@
 
 > **版本**：一周固化版（v1.13）  
 > **适用系统**：[mr2525-template-catalog](../README.md)  
-> **关联文档**：[MR2525 五金结构体系说明](../../MR2525%20五金结构（可编辑语言）体系说明.md) · [**协作流程图 · 上手指南**](WORKFLOW.md)（系统内 **流程说明**） · [**2026-06-04 升级摘要**](UPGRADE-20260604.md) · [飞书搭建指南](FEISHU-SETUP.md) · [单价库微调](PRICE-LIB-UPDATES.md) · [外包深化表单](DEEPENING-FORM-UPDATES.md) · [模板列表](TEMPLATE-LIST-UPDATES.md) · [标签库](TAG-LIB-UPDATES.md) · [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md) · [模板图册](GALLERY-UPDATES.md)
+> **关联文档**：[MR2525 五金结构体系说明](../../MR2525%20五金结构（可编辑语言）体系说明.md) · [**SKP 归档开发计划**](../../sketchup-mr2525-archive/docs/DEVELOPMENT-PLAN.md) · [**SKP 归档 PRD**](../../sketchup-mr2525-archive/docs/PRD.md) · [**SKP 归档规范**](../../sketchup-mr2525-archive/docs/ARCHIVE-SPEC.md) · [**协作流程图 · 上手指南**](WORKFLOW.md)（系统内 **流程说明**） · [**2026-05-31 升级摘要**](UPGRADE-20260531.md) · [飞书搭建指南](FEISHU-SETUP.md) · [单价库微调](PRICE-LIB-UPDATES.md) · [外包深化表单](DEEPENING-FORM-UPDATES.md) · [模板列表](TEMPLATE-LIST-UPDATES.md) · [标签库](TAG-LIB-UPDATES.md) · [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md) · [模板图册](GALLERY-UPDATES.md)
 
 ---
 
@@ -550,12 +550,14 @@ catalog（内部主系统：录入 + BOM + 算价 + 审核）
 | 五金配件 | 单价库维护 | 单价库维护 |
 | 板材 | 单价库维护 | 单价库维护 |
 
-**板材键**：材质类型 + 厚度(mm) + 颜色 — 每个组合一条记录。
+**板材条目（价库）**：材质类型 + 厚度(mm) + 计价 + 对内/对外价 + 供应商 — **一条记录**。
+
+**板材颜色**：挂在该条目下（表 `price_item_panel_colors`），可多个；**同条目内同价**。模板 BOM 每行选其中一个颜色作为 **标配色**（`quote_panels.color`），可选范围 = 该条目全部颜色。
 
 **维护要求**：
 
 - 六通 / 五金 / 板材需成对维护 **对外价** 与 **对内价**。
-- **皮肤选配说明**中引用的可选颜色，必须已在单价库中存在（同材质、同厚度）。
+- 模板 BOM 行引用的价库条目下，**标配色与升级可选色**均须已在该条目的颜色列表中维护。
 - 清单员在模板中只能**选取**单价库条目，不能随意改价（管理员在单价库维护）。
 
 ---
@@ -642,6 +644,23 @@ data/uploads/
 | 上传前（本地） | 简短名称，如 `L型展架.skp` |
 | 登记后 | `data/uploads/{模板编号}/{模板编号}.skp` |
 
+#### 与 WF1 本地 `_output/` 的对应（归档插件）
+
+录入员从 SketchUp 归档流水线取文件时，本地目录为（详见同级仓库 `sketchup-mr2525-archive/docs/ARCHIVE-SPEC.md` §11）：
+
+```
+{方案目录}/
+├── {名}.skp
+├── {名}_archived.skp
+└── _output/
+    └── {名}/              ← 与 skp 主文件名一致
+        ├── report.json
+        ├── render/          ← KeyShot 渲染图，上传 catalog「渲染图」
+        └── effect/          ← Gemini 效果图候选，上传 catalog「效果图」
+```
+
+上传 catalog 时：`*_archived.skp` 登记为模板 skp；从 `render/`、`effect/` 各筛选 ≥ 1 张图片上传。同目录多个 skp 时，各自 `_output/{文件名}/` 互不干扰。
+
 ### 12.4 审核存档目录
 
 审核通过后的留痕文件存放在 **`data/uploads/审核存档/`**（与模板目录同级，不放在各模板编号文件夹内）：
@@ -724,9 +743,9 @@ data/uploads/
 | v1.5 | 2026-05-31 | 已下架重新上架须经待审核（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md)） |
 | v1.6 | 2026-05-31 | 详情基本信息栏分组；可定制命名；封面缩略图选择器；移除皮肤选配说明/询单链接编辑（见 [DETAIL-BASIC-INFO-UPDATES](DETAIL-BASIC-INFO-UPDATES.md)） |
 | v1.7 | 2026-05-31 | 标签库字云 + 详情 `#` 打标（见 [TAG-LIB-UPDATES](TAG-LIB-UPDATES.md)） |
-| v1.8 | 2026-06-01 | 模板列表多标签**交集**筛选；标签库字云点击追加筛选（见 [TAG-LIB-UPDATES](TAG-LIB-UPDATES.md) §3、[TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §9） |
-| v1.9 | 2026-06-02 | 型材颜色；单价库五金列宽；`quote_hardware.spec` 迁移（见 [PRICE-LIB-UPDATES](PRICE-LIB-UPDATES.md) §9–§10） |
-| v1.10 | 2026-06-02 | 已发布仅可改标签、下架按钮；版本审核 +0.1 / 换模型 +1（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §7） |
-| v1.11 | 2026-06-03 | 图册「下载手册」PDF、「下载清单」内部 CSV、批量打包（见 [GALLERY-UPDATES](GALLERY-UPDATES.md)） |
-| v1.12 | 2026-06-04 | 审核发布写入**版本历史**；详情版本历史卡片（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §12） |
-| v1.13 | 2026-06-04 | **外包深化表单**导出/导入；单价库六通/五金**图片**（见 [DEEPENING-FORM-UPDATES](DEEPENING-FORM-UPDATES.md)、[PRICE-LIB-UPDATES](PRICE-LIB-UPDATES.md) §13、[UPGRADE-20260604](UPGRADE-20260604.md)） |
+| v1.8 | 2026-05-31 | 模板列表多标签**交集**筛选；标签库字云点击追加筛选（见 [TAG-LIB-UPDATES](TAG-LIB-UPDATES.md) §3、[TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §9） |
+| v1.9 | 2026-05-29 | 型材颜色；单价库五金列宽；`quote_hardware.spec` 迁移（见 [PRICE-LIB-UPDATES](PRICE-LIB-UPDATES.md) §9–§10） |
+| v1.10 | 2026-05-29 | 已发布仅可改标签、下架按钮；版本审核 +0.1 / 换模型 +1（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §7） |
+| v1.11 | 2026-05-29 | 图册「下载手册」PDF、「下载清单」内部 CSV、批量打包（见 [GALLERY-UPDATES](GALLERY-UPDATES.md)） |
+| v1.12 | 2026-05-31 | 审核发布写入**版本历史**；详情版本历史卡片（见 [TEMPLATE-LIST-UPDATES](TEMPLATE-LIST-UPDATES.md) §12） |
+| v1.13 | 2026-05-31 | **外包深化表单**导出/导入；单价库六通/五金**图片**（见 [DEEPENING-FORM-UPDATES](DEEPENING-FORM-UPDATES.md)、[PRICE-LIB-UPDATES](PRICE-LIB-UPDATES.md) §13、[UPGRADE-20260531](UPGRADE-20260531.md)） |

@@ -1,5 +1,16 @@
 const { panelLineTotal, hardwareLineTotal } = require("./pricing");
 const { removePriceItemImageFile, toPublicUrl, relFromUploads } = require("./storage");
+const {
+  buildPanelLabel,
+  normalizeColorsInput,
+  parseColorTokens,
+  addPanelColors,
+  setPanelColors,
+  attachColorsToPanelItem,
+  attachColorsToPanelItems,
+  getPanelColorHex,
+  colorAllowedOnItem
+} = require("./panel-price-colors");
 
 function defaultInternalPrice(external) {
   const ext = Number(external) || 0;
@@ -33,23 +44,46 @@ function listPriceItems(db, { category, enabledOnly = true } = {}) {
   if (enabledOnly) {
     sql += " AND enabled = 1";
   }
-  sql += " ORDER BY category ASC, material_type ASC, color ASC, thickness_mm ASC, label ASC";
-  return db.prepare(sql).all(...params).map(mapPriceItem);
+  sql += " ORDER BY category ASC, material_type ASC, thickness_mm ASC, label ASC";
+  const rows = db.prepare(sql).all(...params).map(mapPriceItem);
+  if (category === "panel") return attachColorsToPanelItems(db, rows);
+  return rows.map((r) => (r.category === "panel" ? attachColorsToPanelItem(db, r) : r));
 }
 
 function getPriceItem(db, id) {
-  return mapPriceItem(db.prepare("SELECT * FROM price_items WHERE id = ?").get(id));
+  const item = mapPriceItem(db.prepare("SELECT * FROM price_items WHERE id = ?").get(id));
+  if (!item) return null;
+  return item.category === "panel" ? attachColorsToPanelItem(db, item) : item;
 }
 
-function findPanelDuplicate(db, { material_type, color, thickness_mm }) {
-  return mapPriceItem(
-    db
-      .prepare(
-        `SELECT * FROM price_items WHERE category = 'panel'
-         AND material_type = ? AND color = ? AND thickness_mm = ?`
-      )
-      .get(material_type, color, Number(thickness_mm))
-  );
+function findPanelEntry(db, data) {
+  const thickness = Number(data.thickness_mm);
+  const unit_price = Number(data.unit_price) || 0;
+  const internal =
+    data.unit_price_internal != null && data.unit_price_internal !== ""
+      ? Number(data.unit_price_internal)
+      : defaultInternalPrice(unit_price);
+  const row = db
+    .prepare(
+      `SELECT * FROM price_items WHERE category = 'panel'
+       AND material_type = ? AND thickness_mm = ?
+       AND pricing_mode = ? AND unit_price = ?
+       AND COALESCE(unit_price_internal, -1) = COALESCE(?, -1)
+       AND TRIM(COALESCE(supplier, '')) = ?`
+    )
+    .get(
+      data.material_type,
+      thickness,
+      data.pricing_mode || "per_sqm",
+      unit_price,
+      internal,
+      (data.supplier || "").trim()
+    );
+  return row ? attachColorsToPanelItem(db, mapPriceItem(row)) : null;
+}
+
+function findPanelDuplicate(db, data) {
+  return findPanelEntry(db, data);
 }
 
 function getPriceItemReferences(db, id) {
@@ -148,18 +182,18 @@ function mapCsvPanelRow(row) {
     unit_price,
     unit_price_internal,
     supplier,
+    colors: parseColorTokens(color, color_hex),
     label:
       label ||
-      (material_type && color && thickness_mm != null
-        ? `${material_type} · ${color} · ${thickness_mm}mm`
-        : "")
+      (material_type && thickness_mm != null ? buildPanelLabel(material_type, thickness_mm) : "")
   };
 }
 
 function validatePanelRow(data) {
   const errors = [];
   if (!data.material_type) errors.push("缺少材质");
-  if (!data.color) errors.push("缺少颜色");
+  const colors = data.colors?.length ? data.colors : parseColorTokens(data.color, data.color_hex);
+  if (!colors.length) errors.push("缺少颜色");
   if (data.thickness_mm == null || Number.isNaN(data.thickness_mm)) errors.push("缺少有效厚度");
   if (!data.supplier) errors.push("缺少供应商");
   if (!data.unit_price || data.unit_price <= 0) errors.push("缺少有效对外价");
@@ -174,11 +208,12 @@ function importPanelCsv(db, { csv, duplicateDecisions = null, preview = false } 
     newRows: [],
     duplicates: [],
     errors: [],
-    stats: { created: 0, overwritten: 0, skipped: 0, errors: 0 }
+    stats: { created: 0, merged: 0, overwritten: 0, skipped: 0, errors: 0 }
   };
 
   for (const raw of parsed) {
     const data = mapCsvPanelRow(raw);
+    data.colors = data.colors?.length ? data.colors : parseColorTokens(data.color, data.color_hex);
     const line = raw._line;
     const fieldErrors = validatePanelRow(data);
     if (fieldErrors.length) {
@@ -186,12 +221,15 @@ function importPanelCsv(db, { csv, duplicateDecisions = null, preview = false } 
       result.stats.errors += 1;
       continue;
     }
+    if (!data.label && data.material_type && data.thickness_mm != null) {
+      data.label = buildPanelLabel(data.material_type, data.thickness_mm);
+    }
 
-    const existing = findPanelDuplicate(db, data);
+    const existing = findPanelEntry(db, data);
     if (existing) {
-      result.duplicates.push({ line, existing, row: data });
+      result.duplicates.push({ line, existing, row: data, merge: true });
       if (preview || !duplicateDecisions) continue;
-      const action = duplicateDecisions[line] || duplicateDecisions[String(line)];
+      const action = duplicateDecisions[line] || duplicateDecisions[String(line)] || "merge";
       if (action === "skip") {
         result.stats.skipped += 1;
         continue;
@@ -199,17 +237,23 @@ function importPanelCsv(db, { csv, duplicateDecisions = null, preview = false } 
       if (action === "overwrite") {
         updatePriceItem(db, existing.id, {
           material_type: data.material_type,
-          color: data.color,
-          color_hex: data.color_hex,
           thickness_mm: data.thickness_mm,
           pricing_mode: data.pricing_mode,
           unit_price: data.unit_price,
           unit_price_internal: data.unit_price_internal,
           supplier: data.supplier,
-          label: data.label
+          label: data.label,
+          colors: data.colors
         });
         result.stats.overwritten += 1;
         continue;
+      }
+      try {
+        addPanelColors(db, existing.id, data.colors);
+        result.stats.merged = (result.stats.merged || 0) + 1;
+      } catch (err) {
+        result.errors.push({ line, errors: [err.message], row: data });
+        result.stats.errors += 1;
       }
       continue;
     }
@@ -224,8 +268,7 @@ function importPanelCsv(db, { csv, duplicateDecisions = null, preview = false } 
       label: data.label,
       unit: "块",
       material_type: data.material_type,
-      color: data.color,
-      color_hex: data.color_hex,
+      colors: data.colors,
       thickness_mm: data.thickness_mm,
       pricing_mode: data.pricing_mode,
       unit_price: data.unit_price,
@@ -270,11 +313,20 @@ function createPriceItem(db, data) {
       data.color_hex || ""
     );
   const item = getPriceItem(db, result.lastInsertRowid);
+  if (data.category === "panel") {
+    const colors = normalizeColorsInput(data);
+    if (colors.length) setPanelColors(db, item.id, colors);
+    if (!data.label && data.material_type && data.thickness_mm != null) {
+      updatePriceItem(db, item.id, {
+        label: buildPanelLabel(data.material_type, data.thickness_mm)
+      });
+    }
+  }
   if (data.supplier?.trim()) {
     const { ensureSupplierRecord } = require("./suppliers");
     ensureSupplierRecord(db, data.supplier);
   }
-  return item;
+  return getPriceItem(db, item.id);
 }
 
 function propagatePriceItemChange(db, priceItemId) {
@@ -306,13 +358,12 @@ function propagatePriceItemChange(db, priceItemId) {
     const r = db
       .prepare(
         `UPDATE quote_panels SET
-          material_type = ?, color = ?, thickness_mm = ?, material_name = ?,
+          material_type = ?, thickness_mm = ?, material_name = ?,
           pricing_mode = ?, price_per_sqm = ?, fixed_unit_price = ?
          WHERE price_item_id = ?`
       )
       .run(
         item.material_type || "",
-        item.color || "",
         item.thickness_mm ?? null,
         item.label,
         pricing.pricing_mode,
@@ -360,6 +411,11 @@ function updatePriceItem(db, id, data) {
   }
   values.push(id);
   db.prepare(`UPDATE price_items SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+
+  if (existing.category === "panel" && "colors" in data && Array.isArray(data.colors)) {
+    setPanelColors(db, id, normalizeColorsInput({ colors: data.colors }));
+  }
+
   const updated = getPriceItem(db, id);
 
   if ("supplier" in data && data.supplier?.trim()) {
@@ -441,7 +497,9 @@ function getPanelFilters(db) {
     if (!byMaterial[p.material_type]) {
       byMaterial[p.material_type] = { colors: new Set(), thicknesses: new Set(), items: [] };
     }
-    if (p.color) byMaterial[p.material_type].colors.add(p.color);
+    for (const c of p.colors || []) {
+      if (c.color) byMaterial[p.material_type].colors.add(c.color);
+    }
     if (p.thickness_mm != null) byMaterial[p.material_type].thicknesses.add(p.thickness_mm);
     byMaterial[p.material_type].items.push(p);
   }
@@ -492,21 +550,32 @@ function resolvePanelPricing(priceItem) {
   };
 }
 
-function enrichPanelLine(row, priceItem) {
+function enrichPanelLine(row, priceItem, db = null) {
   const pricing = resolvePanelPricing(priceItem);
+  const lineColor = row.color || "";
+  const color_hex =
+    db && row.price_item_id && lineColor
+      ? getPanelColorHex(db, row.price_item_id, lineColor)
+      : priceItem?.color_hex || "";
+  const colorMissing =
+    db &&
+    row.price_item_id &&
+    lineColor &&
+    priceItem &&
+    !colorAllowedOnItem(db, row.price_item_id, lineColor);
   const material_name =
     row.material_name ||
     priceItem?.label ||
-    [priceItem?.material_type, priceItem?.color, priceItem?.thickness_mm != null ? `${priceItem.thickness_mm}mm` : ""]
-      .filter(Boolean)
-      .join(" · ");
+    (priceItem?.material_type && priceItem?.thickness_mm != null
+      ? buildPanelLabel(priceItem.material_type, priceItem.thickness_mm)
+      : "");
 
   return {
     ...row,
     material_name,
     material_type: row.material_type || priceItem?.material_type || "",
-    color: row.color || priceItem?.color || "",
-    color_hex: priceItem?.color_hex || "",
+    color: lineColor,
+    color_hex,
     thickness_mm: row.thickness_mm ?? priceItem?.thickness_mm ?? null,
     pricing_mode: pricing.pricing_mode,
     price_per_sqm: pricing.price_per_sqm,
@@ -515,7 +584,7 @@ function enrichPanelLine(row, priceItem) {
     price_per_sqm_internal: pricing.price_per_sqm_internal,
     fixed_unit_price_external: pricing.fixed_unit_price_external,
     fixed_unit_price_internal: pricing.fixed_unit_price_internal,
-    price_item_missing: !!(row.price_item_id && !priceItem),
+    price_item_missing: !!(row.price_item_id && !priceItem) || colorMissing,
     ...panelLineTotal(
       {
         length_inch: row.length_inch,
@@ -573,6 +642,7 @@ module.exports = {
   clearPriceItemImage,
   getPriceItemReferences,
   findPanelDuplicate,
+  findPanelEntry,
   resolvePurchaseLink,
   importPanelCsv,
   getPanelFilters,

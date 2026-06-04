@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "brand": {
+    "productName": "Parti空间编辑系统",
+    "tagline": "模块化空间方案 · MR2525 型材体系",
+    "scenarioTitleTemplate": "——{scenarioName}空间",
+    "contact": {
+      "web": "parti.example.com",
+      "email": "contact@parti.example.com"
+    }
+  },
+  "pages": {
+    "intro": [
+      {
+        "layout": "hero",
+        "title": "Parti 空间编辑系统",
+        "subtitle": "面向展厅、办公、商业等多场景的可配置空间方案库",
+        "bullets": [
+          "MR2525 型材 + 板材 + 五金的标准化组合",
+          "场景手册：效果图标记一键跳转对应模板方案",
+          "方案手册：对外脱敏 BOM，便于客户浏览与选型"
+        ]
+      },
+      {
+        "layout": "split",
+        "title": "MR2525 型材体系",
+        "body": "基于铝型材与标准连接件的快速搭建系统，支持尺寸深化、皮肤选配与清单导出。本手册中的模板方案均已发布，参考价与 BOM 以图册数据为准。"
+      }
+    ],
+    "outro": [
+      {
+        "layout": "closing",
+        "title": "了解更多",
+        "lines": [
+          "正式报价以确认尺寸与清单为准",
+          "访问官网或联系销售获取最新图册与案例"
+        ]
+      }
+    ],
+    "beforePartB": []
+  },
+  "apply": {
+    "scenarioHandbook": {
+      "intro": true,
+      "outro": true,
+      "beforePartB": false
+    },
+    "templateHandbook": {
+      "intro": false,
+      "outro": true
+    }
+  }
+}

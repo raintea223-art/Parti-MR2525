@@ -1,8 +1,8 @@
 # 协作流程图 · 上手指南
 
-> 最后更新：2026-06-04（版本历史、外包深化表单、单价库六通/五金图片）  
+> 最后更新：2026-05-31（版本历史、外包深化表单、单价库六通/五金图片）  
 > 完整规范：[MR2525 模板库协作 SOP](MR2525模板库协作SOP.md)  
-> 升级摘要：[UPGRADE-20260604](UPGRADE-20260604.md)  
+> 升级摘要：[UPGRADE-20260531](UPGRADE-20260531.md)  
 > 系统内查看：侧栏 **流程说明**（含交互流程图）
 
 本文档帮助新协作者 **5 分钟理解分工**，并按角色执行操作。细节口径（定价、皮肤、checklist）以 SOP 为准。
@@ -154,7 +154,7 @@ flowchart TD
 | 版本字段 | 详情只读，由系统写入，不可手工改 |
 | **版本历史** | 每次「通过并发布」写入一条记录；详情可查看变更摘要（见 §6.1） |
 
-详见 [模板列表 §7](TEMPLATE-LIST-UPDATES.md)、[§12 版本历史](TEMPLATE-LIST-UPDATES.md#12-2026-06-04--版本历史)。
+详见 [模板列表 §7](TEMPLATE-LIST-UPDATES.md)、[§12 版本历史](TEMPLATE-LIST-UPDATES.md#12-2026-05-31--版本历史)。
 
 ---
 
@@ -210,7 +210,7 @@ flowchart LR
 | 范围 | **不含** 板材 |
 | 联动 | 改图不同步到已引用模板；删条目清文件 |
 
-详见 [PRICE-LIB-UPDATES §13](PRICE-LIB-UPDATES.md#13-2026-06-04--六通--五金图片)。
+详见 [PRICE-LIB-UPDATES §13](PRICE-LIB-UPDATES.md#13-2026-05-31--六通--五金图片)。
 
 ---
 
@@ -324,7 +324,7 @@ flowchart LR
 
 | 主题 | 文档 |
 |------|------|
-| **升级摘要 2026-06-04** | [UPGRADE-20260604.md](UPGRADE-20260604.md) |
+| **升级摘要 2026-05-31** | [UPGRADE-20260531.md](UPGRADE-20260531.md) |
 | 协作 SOP 全文 | [MR2525模板库协作SOP.md](MR2525模板库协作SOP.md) |
 | 已发布只读 / 下架 / 版本 | [TEMPLATE-LIST-UPDATES.md](TEMPLATE-LIST-UPDATES.md) §7、§12 |
 | 外包深化表单 | [DEEPENING-FORM-UPDATES.md](DEEPENING-FORM-UPDATES.md) |

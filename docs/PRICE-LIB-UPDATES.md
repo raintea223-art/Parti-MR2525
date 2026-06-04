@@ -1,8 +1,8 @@
 # 单价库模块微调 · 实施说明
 
 > 实施日期：2026-05-28 — 2026-06-04  
-> 状态：**已实施**  
-> 前端样式：`styles.css?v=20260604e`
+> 状态：**已实施**（板材多色合并见 [§17](#17-2026-06-04--板材一条目多色)）  
+> 前端样式：`styles.css?v=20260531h`（全局 UI 见 [UI-UPDATES-20260531](UI-UPDATES-20260531.md)）
 
 本文档记录单价库（**型材公式与颜色** / 六通 / 五金配件 / 板材 / 非标件 / **供应商库**）微调的需求、已确认决策与代码改动摘要。
 
@@ -30,7 +30,7 @@
 | 型材颜色 | 管理员添加 / 启用 / 停用；预置银色、木色；**不参与计价** |
 | 详细清单 | 添加型材行时选择颜色；图册 BOM 含颜色列 |
 
-详见 [§9 型材颜色](#9-2026-06-02--型材颜色)。
+详见 [§9 型材颜色](#9-2026-05-29--型材颜色)。
 
 ### 2.1 六通栏
 
@@ -50,18 +50,34 @@
 | 供应商列 | 必填（新建 / 编辑 / 转移至五金时） |
 | 删除保护 | 检查 `quote_hardware` 引用 |
 
-**列宽：**
+**列宽（2026-05-31 当前）：**
 
-| 列 | 2026-05-28 | 2026-06-02（当前） |
-|----|------------|-------------------|
+| 列 | 宽度 / 说明 |
+|----|-------------|
+| 图片 | 列宽 **6rem**；缩略图 **5rem × 5rem**（`.col-price-image`） |
+| 名称 | **12%**，`min-width: 6.5rem` |
+| 规格 | **8%**，`min-width: 4rem` |
+| 单位 | **3.5rem**，表头不换行 |
+| 对外价 / 对内价 | 五金专用 **12rem**（`.price-lib-table.price-lib-hardware .col-price`） |
+| 链接 | **16%** |
+| 供应商 | **10%** |
+
+> **注意：** 五金价格列规则必须写在通用 `.price-lib-table .col-price` **之后**，否则会被 `6rem` 覆盖。
+
+样式类：`.price-lib-table.price-lib-hardware` · `.col-hw-name` / `.col-hw-spec` / `.col-price-image` 等。
+
+**添加栏（2026-05-31）：** 单行 flex 铺满屏宽（`.hardware-add.hardware-add-wide`）；图片区与六通栏相同。详见 [UI-UPDATES-20260531 §4](UI-UPDATES-20260531.md#4-单价库--五金配件添加栏) 与下文 §15。
+
+**列宽（历史）：**
+
+| 列 | 2026-05-28 | 2026-05-29 |
+|----|------------|------------|
 | 名称 | 约 7% | **18%**（`min-width: 9rem`） |
 | 规格 | 约 7% | **16%**（`min-width: 8rem`） |
 | 单位 | 加宽，表头不换行 | 约 3.5rem |
 | 链接 | 约 34% | **24%** |
 | 供应商 | 约 9% | **10%** |
 | 对外价 / 对内价 | 约 64px 输入框 | 同左（`col-price`） |
-
-样式类：`.price-lib-table.price-lib-hardware` · `.col-hw-name` / `.col-hw-spec` 等。
 
 **链接识别规则（域名映射）：**
 
@@ -169,11 +185,11 @@
 | `link` | TEXT | 五金采购链接（可选） |
 | `supplier` | TEXT | 供应商（五金/板材必填） |
 | `color_hex` | TEXT | 板材 RGB 色值（可选） |
-| `image_url` | TEXT | 六通/五金图片 URL（可选，2026-06-04） |
+| `image_url` | TEXT | 六通/五金图片 URL（可选，2026-05-31） |
 
 `price_items_custom` 无新列；暴露已有 `unit_price_internal`、`note`。
 
-**报价清单 `quote_hardware` 迁移（2026-06-02）：**
+**报价清单 `quote_hardware` 迁移（2026-05-29）：**
 
 - 旧库可能仅有 `model` / `catalog_key`，无 `spec`
 - 启动时 `ensureColumn` 增加 `spec`，并将历史 `model` 回填到 `spec`
@@ -224,6 +240,9 @@
 | DELETE | `/api/price-items/:id/image` | 清除六通/五金图片 |
 | GET | `/api/pricing/profile-formula` | 型材公式参数 |
 | PATCH | `/api/pricing/profile-formula` | 管理员更新公式 |
+| GET | `/api/price-items/panel/merge-preview` | 预览板材重复条目合并 |
+| POST | `/api/price-items/panel/merge-run` | 执行合并 |
+| PATCH | `/api/panels/:lineId` | 修改模板板材 BOM 行颜色 |
 
 ---
 
@@ -239,9 +258,11 @@
 | `src/price-custom.js` | 0.5 默认价、BOM 字段传播 |
 | `src/server.js` | 新 API、校验、删除 409、供应商 API |
 | `public/app.js` | 各 Tab UI、选色弹层（含透明）、排序、CSV、列宽、模板警告 |
-| `public/styles.css` | 序号、排序、警告、选色弹层、列宽（含五金名称/规格 2026-06-02）、CSV 按钮样式 |
+| `public/styles.css` | 序号、排序、警告、选色弹层、列宽（含五金名称/规格 2026-05-29）、CSV 按钮样式 |
 | `src/public-sheet.js` | 图册 BOM 型材表增加颜色列 |
 | `data/feishu/板材单价库-导入模板.csv` | 新建 |
+| `src/panel-price-colors.js` | **新建** 板材多色子表与迁移 |
+| `price_item_panel_colors` | **新建** 表（迁移创建） |
 
 ---
 
@@ -284,11 +305,11 @@
 - [模板编号规则](MR2525模板库协作SOP.md) §12 — `TPL-场景-序号-文件名`  
 - [模板图册](GALLERY-UPDATES.md) — 展示图、方案手册 PDF、内部清单 CSV 与批量下载
 - [场景库](SCENARIO-LIB-UPDATES.md) — 场景图标记、场景手册 PDF
-- [升级摘要 2026-06-04](UPGRADE-20260604.md)
+- [升级摘要 2026-05-31](UPGRADE-20260531.md)
 
 ---
 
-## 9. 2026-06-02 · 型材颜色
+## 9. 2026-05-29 · 型材颜色
 
 | 项 | 说明 |
 |----|------|
@@ -300,7 +321,7 @@
 
 ---
 
-## 10. 2026-06-02 · 五金配件清单修复
+## 10. 2026-05-29 · 五金配件清单修复
 
 | 项 | 说明 |
 |----|------|
@@ -315,8 +336,9 @@
 | 日期 | 说明 |
 |------|------|
 | 2026-05-28 | 六通/五金/板材/非标件/供应商库；链接识别；板材 CSV |
-| 2026-06-02 | 型材颜色；五金表 `spec` 迁移；五金列宽加大名称/规格 |
-| 2026-06-01 | 标签库与列表筛选（见 [TAG-LIB-UPDATES](TAG-LIB-UPDATES.md)） |
+| 2026-05-29 | 型材颜色；五金表 `spec` 迁移；五金列宽加大名称/规格 |
+| 2026-05-31 | 标签库与列表筛选（见 [TAG-LIB-UPDATES](TAG-LIB-UPDATES.md)） |
+| 2026-05-31 | 五金列宽/添加栏 UI（§15）；见 [UI-UPDATES-20260531](UI-UPDATES-20260531.md) |
 
 ---
 
@@ -330,7 +352,7 @@
 
 ---
 
-## 13. 2026-06-04 · 六通 / 五金图片
+## 13. 2026-05-31 · 六通 / 五金图片
 
 | 项 | 说明 |
 |----|------|
@@ -347,12 +369,112 @@
 
 样式：`.price-item-thumb`、`.col-price-image`、`.price-item-image-drop`
 
-详见 [升级摘要](UPGRADE-20260604.md)。
+详见 [升级摘要](UPGRADE-20260531.md)。
 
 ---
 
-## 14. 修订记录（续）
+## 15. 2026-05-31 · 五金列宽与添加栏 UI
+
+| 项 | 说明 |
+|----|------|
+| 表格列宽 | 对外/对内价 **12rem**；图片列 **6rem**（5rem 方形缩略图）；规格、链接收窄 |
+| CSS 坑点 | `.price-lib-table .col-price` 写在后面会覆盖五金规则，须用 `.price-lib-table.price-lib-hardware .col-price` |
+| 添加栏 | 单行 **flex** 铺满屏宽；`.hardware-add.hardware-add-wide` 须写在 `.hardware-add` **之后** |
+| 图片上传 | 与六通栏相同可选拖拽区（`priceAddImageFieldHtml`） |
+
+总览见 [UI-UPDATES-20260531](UI-UPDATES-20260531.md)。
+
+---
+
+## 16. 修订记录（续）
 
 | 日期 | 说明 |
 |------|------|
-| 2026-06-04 | 六通/五金图片（§13） |
+| 2026-05-31 | 六通/五金图片（§13） |
+| 2026-05-31 | 五金列宽、添加栏单行全宽（§15）；全局 UI 与 `app.js` 回归见 [UI-UPDATES-20260531](UI-UPDATES-20260531.md) |
+
+
+---
+
+## 17. 2026-06-04 · 板材一条目多色
+
+> **Phase 1 已实施。** 参考价「可定制」区间算法（按同色厚异色取 max）为 **Phase 2**，本期未改 `computeQuoteSummary`。
+
+### 17.1 产品约定
+
+| 概念 | 定义 |
+|------|------|
+| **价库板材条目** | 一条 = 材质 + 厚度(mm) + 计价方式 + 对外价 + 对内价 + 供应商（**同色厚同价**） |
+| **可选颜色** | 挂在该条目下，多个 `{ 颜色名, color_hex }`；**同条目内价格相同** |
+| **模板 BOM 行** | 引用 `price_item_id` + 本行 **标配色** `quote_panels.color` |
+| **行内可选色** | = 该 `price_item_id` 下 **全部颜色**（无 per-line 子集） |
+| **展示名称 `label`** | `材质 · 厚度mm`（**不含颜色**）；列表「颜色」列为多色块 |
+
+### 17.2 数据模型
+
+**新表 `price_item_panel_colors`**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `price_item_id` | INTEGER FK | 指向 `price_items.id`，CASCADE 删除 |
+| `color` | TEXT | 颜色名（如 白色、透明） |
+| `color_hex` | TEXT | RGB 或 `transparent` |
+| `sort_order` | INTEGER | 展示顺序 |
+
+唯一约束：`(price_item_id, color)`。
+
+**去重键（板材条目，不含颜色）**
+
+`material_type` + `thickness_mm` + `pricing_mode` + `unit_price` + `unit_price_internal` + `supplier`
+
+**迁移 `panel_multi_color_v1`**
+
+1. 启动时自动：旧 `price_items.color` 回填子表；同色厚同价多行合并为一条并重绑 `quote_panels.price_item_id`
+2. 同名颜色、不同 `color_hex` 的合并组 → **跳过**，需人工处理
+3. 价库 Tab：**合并重复板材**（预览 + 确认）与自动迁移规则一致
+
+### 17.3 单价库 UI
+
+| 操作 | 说明 |
+|------|------|
+| 添加板材 | 填材质、厚度、计价、价、供应商；**颜色列表**（chip，可多个） |
+| 列表 | 「颜色」列展示多色标签；`label` 为 `材质 · 厚度mm` |
+| CSV | **一行多色**：`颜色` 用分号，如 `白色;木色;砂面黑`；`颜色HEX` 可对应分号分隔 |
+| CSV 重复 | 与已有**同条目键** → **合并追加颜色**（非覆盖整行）；仍支持单行覆盖价字段 |
+| 合并按钮 | **合并重复板材** → `GET/POST .../panel/merge-*` |
+
+### 17.4 模板详情 · 板材 BOM
+
+**级联顺序：** 材质 → 厚度 → 规格（价库条目，含供应商提示）→ **颜色**
+
+| 操作 | 说明 |
+|------|------|
+| 添加行 | `POST .../panels` 传 `price_item_id` + `color` + 长宽 + 数量 |
+| 改色 | 已有行表格内下拉 → `PATCH /api/panels/:lineId` `{ color }` |
+| 改价库价 | 传播更新单价/材质/厚度/`label`；**不覆盖** BOM 行上的 `color` |
+
+### 17.5 API 补充
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/price-items/panel/merge-preview` | 预览可合并组与 HEX 冲突 |
+| POST | `/api/price-items/panel/merge-run` | 执行合并 |
+| PATCH | `/api/panels/:lineId` | 仅改板材行颜色 |
+| POST | `/api/price-items` | 板材支持 `colors: [{ color, color_hex }, ...]` |
+| GET | `/api/price-items/panel-filters` | 每条 `panel` 带 `colors[]` |
+
+### 17.6 代码位置
+
+| 文件 | 职责 |
+|------|------|
+| `src/panel-price-colors.js` | 子表、迁移、合并、颜色解析 |
+| `src/price-items.js` | CRUD、CSV、`getPanelFilters`、传播（不含 color） |
+| `src/server.js` | 路由与校验 |
+| `public/app.js` | 价库多色表单、级联、BOM 改色 |
+| `public/styles.css` | `.panel-price-colors-chips` 等 |
+
+### 17.7 与 SOP 的对应
+
+- [MR2525模板库协作SOP](MR2525模板库协作SOP.md) §3、§11 已按「一条目多色」更新说明。
+- **可定制 = 开** 时参考价区间仍依赖 Phase 2；本期同色同价下 min/max 通常相同。
+

@@ -25,7 +25,7 @@ cd "c:\Users\zl450\Nutstore\1\我的坚果云\Cursor\mr2525-template-catalog"
 npm start
 ```
 
-启动成功时应看到 `场景手册 PDF: 20260530-handbook-v2`。前端改动请 **Ctrl+F5**，侧栏 UI 版本见 `public/index.html`。
+启动成功时应看到 `场景手册 PDF: 20260603-handbook-design-system`。手册品牌页编辑见 [手册编辑指南](docs/HANDBOOK-EDITING.md)。前端改动请 **Ctrl+F5**，侧栏 UI 版本 **20260531h**（见 [UI 更新说明](docs/UI-UPDATES-20260531.md)）。
 
 ### 局域网同事访问
 
@@ -57,7 +57,7 @@ npm start
 
 **已发布：** 除 **标签** 外不可改；须 **下架** 后编辑，再审核上架（版本 +0.1；换 skp 模型 +1）。详情状态栏按钮为 **下架**。
 
-**上手指南与流程图：** 侧栏 **流程说明**，或仓库 [docs/WORKFLOW.md](docs/WORKFLOW.md)。**2026-06-04 升级摘要：** [docs/UPGRADE-20260604.md](docs/UPGRADE-20260604.md)。
+**上手指南与流程图：** 侧栏 **流程说明**，或仓库 [docs/WORKFLOW.md](docs/WORKFLOW.md)。**2026-05-31 升级摘要：** [docs/UPGRADE-20260531.md](docs/UPGRADE-20260531.md)。
 
 ## 自动编号规则
 
@@ -96,7 +96,8 @@ slug 示例：`zhanting-0001-l型展架`（场景拼音前缀 + 序号 + 文件�
 - 面积(㎡) = 长(mm) × 宽(mm) / 10⁶，边长由 inch × 25.4 换算
 - 按㎡计价：件单价 = 面积 × ㎡单价；固定件价：直接填件单价
 - 小计 = 数量 × 件单价
-- **同一模板可添加多种板材**
+- **同一模板可添加多种板材**（不同材质/厚度可多行）
+- **单价库**：同色厚同价的多色合并为一条价库条目；模板每行选标配颜色（见 [PRICE-LIB §17](docs/PRICE-LIB-UPDATES.md#17-2026-06-04--板材一条目多色)）
 
 ### 单价库（管理员维护）
 
@@ -106,11 +107,11 @@ slug 示例：`zhanting-0001-l型展架`（场景拼音前缀 + 序号 + 文件�
 |------|----------|
 | **六通** | 名称、型号、对内/对外价；**可选图片**；序号展示 |
 | **五金配件** | 名称、规格、单位、链接、**供应商（必填）**、对内/对外价；**可选图片** |
-| **板材** | 材质、颜色（RGB / **透明**）、厚度、计价、**供应商（必填）**、CSV 批量导入 |
+| **板材** | 材质、厚度、计价、供应商；**一条目多色**（RGB / **透明**）；CSV（支持分号多色）；合并重复条目 |
 | **供应商库** | 从五金/板材汇总供应商名；维护联系人、电话、备注 |
 | **非标件** | 类别、项目、对内/对外价、备注；与模板「其他」Tab 同步 |
 
-板材颜色支持 **透明**（`color_hex=transparent`，无 RGB）。五金/板材改价后，已引用模板的报价行自动同步。
+板材颜色支持 **透明**（color_hex=transparent）。改价后同步单价与规格字段，**不覆盖** BOM 行已选颜色。五金/板材改价后，已引用模板的报价行自动同步。
 
 ### 模板列表
 
@@ -203,16 +204,22 @@ slug 示例：`zhanting-0001-l型展架`（场景拼音前缀 + 序号 + 文件�
 
 ## 文档
 
-- [**2026-06-04 升级摘要**](docs/UPGRADE-20260604.md) — 版本历史、外包深化表单、单价库图片、文档索引
+- [**2026-05-31 UI 更新**](docs/UI-UPDATES-20260531.md) — MakerWorld 全局 UI、`app.js` 回归修复、五金列宽与添加栏
+- [**2026-05-31 升级摘要**](docs/UPGRADE-20260531.md) — 版本历史、外包深化表单、单价库图片、文档索引
 - [协作流程图 · 上手指南](docs/WORKFLOW.md) — 按角色入门、Mermaid 图；系统内 **流程说明** 页
 - [外包深化表单](docs/DEEPENING-FORM-UPDATES.md) — 导出 JSON/ZIP、导入 preview/apply
 - [标签库说明](docs/TAG-LIB-UPDATES.md) — 字云、详情 `#` 打标、列表多标签交集筛选
 - [详情基本信息栏](docs/DETAIL-BASIC-INFO-UPDATES.md) — 分组布局、可定制、封面缩略图
 - [模板图册说明](docs/GALLERY-UPDATES.md) — 展示图、手册 PDF、内部清单 CSV、批量下载
+- [手册编辑指南](docs/HANDBOOK-EDITING.md) — 品牌前言/封底 `brand.json`、HTML 预览
+- [手册 Figma 模板](docs/HANDBOOK-FIGMA.md) — 960×540 画板（边缘团队设计稿）
 - [场景库说明](docs/SCENARIO-LIB-UPDATES.md) — 场景配置、标记编辑、手册 PDF
-- [单价库微调说明](docs/PRICE-LIB-UPDATES.md) — 型材/六通/五金/板材；§13 六通五金图片
+- [单价库微调说明](docs/PRICE-LIB-UPDATES.md) — 型材/六通/五金/板材；§17 一条目多色 · §13 图片 · §15 五金 UI
 - [模板列表说明](docs/TEMPLATE-LIST-UPDATES.md) — 排序、标签筛选、已发布只读（§7）、版本历史（§12）
 - [MR2525 模板库协作 SOP](docs/MR2525模板库协作SOP.md)
+- [**SKP 归档规范**（工作流 1+2）](../sketchup-mr2525-archive/docs/ARCHIVE-SPEC.md) — 图层/命名/KeyShot/Gemini 流水线
+- [**SKP 归档 PRD**](../sketchup-mr2525-archive/docs/PRD.md) — 产品需求、验收标准
+- [**SKP 归档开发计划**](../sketchup-mr2525-archive/docs/DEVELOPMENT-PLAN.md) — Stage 门禁式开发顺序
 - [团队协作 SOP 索引](docs/SOP.md)
 - [飞书多维表格搭建指南](docs/FEISHU-SETUP.md)
 

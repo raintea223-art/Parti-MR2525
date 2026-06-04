@@ -14,6 +14,7 @@ const {
   enrichNutLine,
   enrichHardwareLine
 } = require("./price-items");
+const { migratePanelMultiColor } = require("./panel-price-colors");
 const { getCustomItem, enrichBomLine } = require("./price-custom");
 const { initTagsSchema, migrateTagsFromTemplates } = require("./tags");
 const { TAGS } = require("./constants");
@@ -358,6 +359,12 @@ function initSchema(db) {
 
   const { initVersionLogSchema } = require("./version-log");
   initVersionLogSchema(db);
+
+  try {
+    migratePanelMultiColor(db);
+  } catch (err) {
+    console.error("[panel-multi-color migration]", err.message);
+  }
 }
 
 function migrateScenarioMarkersNullableTemplate(db) {
@@ -420,7 +427,7 @@ function getQuotePanels(db, templateId) {
     .prepare("SELECT * FROM quote_panels WHERE template_id = ? ORDER BY sort_order ASC, id ASC")
     .all(templateId)
     .map((row) =>
-      enrichPanelLine(row, row.price_item_id ? getPriceItem(db, row.price_item_id) : null)
+      enrichPanelLine(row, row.price_item_id ? getPriceItem(db, row.price_item_id) : null, db)
     );
 }
 

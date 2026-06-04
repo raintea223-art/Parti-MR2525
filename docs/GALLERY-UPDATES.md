@@ -1,7 +1,7 @@
 # 模板图册 · 实施说明
 
 > 实施日期：2026-05-28  
-> 最后更新：2026-06-04（文档与流程说明同步）  
+> 最后更新：2026-05-31（文档与流程说明同步）  
 > 状态：**已实施**
 
 原「对外展示」模块重命名为 **模板图册**，提供合成展示图浏览与下载（PNG 展示图 / PDF 方案手册 / 内部清单 CSV），并支持勾选后批量打包下载。
@@ -65,7 +65,8 @@
 
 ### 3.2 PDF 版式（16:9 横版）
 
-页面尺寸：**960×540 px（16:9）**，零边距全幅输出。
+页面尺寸：**960×540 px（16:9）**，零边距全幅输出。  
+**品牌封底等固定页：** 见 [手册编辑指南](HANDBOOK-EDITING.md)（默认 `apply.templateHandbook.outro: true`，`intro: false`）。
 
 | 顺序 | 页面 | 说明 |
 |------|------|------|
@@ -74,6 +75,7 @@
 | … | **渲染图** | 每张渲染图单独一页，同上 |
 | 下一页 | **方案信息** | 编号/场景/尺寸/参考价/标签、报价口径；**皮肤选配说明**仅当 `panel_note` 有历史内容时输出（新模板不再在详情填写，见 [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md)） |
 | 最后一页 | **BOM 清单** | 型材 → 六通 → 五金 → 板材 → 其他，**同一页连续排版**；无数据的分类跳过 |
+| （可选） | **品牌封底** | 在 BOM 之后插入 `pages.outro` |
 
 **BOM 页说明：**
 
@@ -167,7 +169,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 - PDF **方案信息页**：`panel_note`（皮肤选配说明）**仅在有历史内容时**出现在 PDF；新模板不在 catalog 详情维护该字段（皮肤以板材 BOM 为准）。
 - 与 [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md) 一致；`src/public-sheet.js` 逻辑未改（有值则输出）。
 
-### 2026-06-03 · 手册 / 清单 / 批量下载
+### 2026-05-29 · 手册 / 清单 / 批量下载
 
 | 变更 | 说明 |
 |------|------|
@@ -176,9 +178,9 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 | 批量 | 卡片勾选 + 顶栏全选；一键 zip 图片/手册、合并 csv（`?ids=`） |
 | 流程说明 | [WORKFLOW.md](WORKFLOW.md) §8.1、系统内 **流程说明** 页已同步 |
 
-### 2026-06-04 · 文档与流程说明同步
+### 2026-05-31 · 文档与流程说明同步
 
-- 升级摘要：[UPGRADE-20260604.md](UPGRADE-20260604.md)
+- 升级摘要：[UPGRADE-20260531.md](UPGRADE-20260531.md)
 - 版本历史、外包深化表单、单价库图片见 WORKFLOW §6.1–§6.3
 
 ---
@@ -188,7 +190,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 - [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md)
 - [标签库](TAG-LIB-UPDATES.md) — 详情打标写入 `tags`；图册/展示图/PDF 仍展示标签
-- [单价库](PRICE-LIB-UPDATES.md) — 型材 BOM 含颜色列；五金清单字段与迁移说明
+- [单价库](PRICE-LIB-UPDATES.md) — 型材 BOM 含颜色列；五金清单；**板材一条目多色（§17）**
 - [模板列表变更](TEMPLATE-LIST-UPDATES.md)
 - [场景库](SCENARIO-LIB-UPDATES.md) — 场景手册 Part B 复用图册页；标记点 PDF 内链至各模板封面（`tpl-{id}`）
 - [单价库微调](PRICE-LIB-UPDATES.md)

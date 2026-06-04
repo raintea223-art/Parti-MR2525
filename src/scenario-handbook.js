@@ -3,12 +3,18 @@ const {
   renderPdfFromHtml,
   contentDisposition,
   imageToDataUri,
-  sheetStyles,
   PAGE_W
 } = require("./public-sheet");
+const {
+  renderHandbookBrandBlock,
+  renderBrandBeforePartBPages,
+  prependAppendBrandPages,
+  wrapHandbookDocument
+} = require("./handbook-shell");
+const { renderLogoBar } = require("./design-system");
 
 /** 启动日志用，便于确认已加载最新场景手册逻辑 */
-const HANDBOOK_BUILD = "20260530-handbook-v2";
+const HANDBOOK_BUILD = "20260603-handbook-design-system";
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -50,7 +56,7 @@ a.marker-pin-link {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #dc2626;
+  background: var(--ds-accent);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -64,7 +70,7 @@ a.marker-pin-link {
   max-width: 160px;
   padding: 3px 8px;
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(0, 0, 0, 0.88);
   color: #fff;
   font-size: 9px;
   line-height: 1.3;
@@ -79,7 +85,7 @@ a.marker-pin-link {
   top: 28px;
   max-width: 340px;
   background: rgba(255,255,255,0.92);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ds-black);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 10px;
@@ -90,45 +96,9 @@ a.marker-pin-link {
 .marker-legend h4 { margin: 0 0 6px; font-size: 11px; }
 .marker-legend li { margin: 0 0 3px; }
 .marker-legend a {
-  color: #1d4ed8;
+  color: var(--ds-accent);
   text-decoration: underline;
   font-weight: 600;
-}
-.handbook-brand-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: 48px 56px 52px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.72) 100%);
-  pointer-events: none;
-}
-.handbook-brand-title {
-  margin: 0 0 10px;
-  color: #fff;
-  font-size: 38px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  line-height: 1.15;
-  text-shadow: 0 2px 12px rgba(0,0,0,.45);
-}
-.handbook-brand-scenario {
-  margin: 0 0 8px;
-  color: #fff;
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-shadow: 0 2px 10px rgba(0,0,0,.4);
-}
-.handbook-brand-version {
-  margin: 0;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  opacity: 0.95;
-  letter-spacing: 0.5px;
 }
 .page-scenario-intro .intro-inner {
   position: absolute;
@@ -137,8 +107,8 @@ a.marker-pin-link {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
-  color: #fff;
+  background: var(--ds-black);
+  color: var(--ds-white);
 }
 .page-scenario-intro .intro-inner h1 { margin: 16px 0 8px; font-size: 32px; font-weight: 600; }
 .page-scenario-intro .code { font-size: 16px; opacity: 0.85; margin-bottom: 12px; }
@@ -150,30 +120,27 @@ a.marker-pin-link {
   height: 540px;
   display: grid;
   place-items: center;
-  background: #0f172a;
-  color: #fff;
+  background: var(--ds-black);
+  color: var(--ds-white);
   font-size: 28px;
   font-weight: 700;
   letter-spacing: 2px;
 }`;
 }
 
-function renderHandbookBrandBlock(scenario, version) {
-  return `<div class="handbook-brand-title">Parti空间编辑系统</div>
-    <div class="handbook-brand-scenario">——${escapeHtml(scenario.name)}空间</div>
-    <div class="handbook-brand-version">${escapeHtml(version)}</div>`;
-}
-
 function renderScenarioIntroPage(scenario, coverDataUri, version) {
-  const brand = renderHandbookBrandBlock(scenario, version);
+  const brand = renderHandbookBrandBlock(scenario.name, version);
+  const logoBar = renderLogoBar({ invert: true });
   if (coverDataUri) {
     return `<section class="page page-image page-scenario-cover">
   <img class="page-bg" src="${coverDataUri}" alt="" />
+  ${logoBar}
   <div class="handbook-brand-overlay">${brand}</div>
 </section>`;
   }
   return `<section class="page page-scenario-intro">
   <div class="intro-inner">
+    ${logoBar}
     ${brand}
     <h1>${escapeHtml(scenario.name)}</h1>
     <div class="code">${escapeHtml(scenario.code)}</div>
@@ -259,24 +226,21 @@ function generateScenarioHandbookHtml(scenario, images, templates, options = {})
   }
 
   if (templates.length) {
+    pages.push(...renderBrandBeforePartBPages("scenarioHandbook"));
     pages.push(renderPartDivider("模板方案"));
     for (const t of templates) {
       pages.push(...buildTemplatePagesWithAnchor(t));
     }
   }
 
-  const styles = sheetStyles() + handbookExtraStyles();
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <title>${escapeHtml(scenario.code)} 场景手册</title>
-  <style>${styles}</style>
-</head>
-<body>
-  ${pages.join("\n")}
-</body>
-</html>`;
+  const withBrand = prependAppendBrandPages(pages, "scenarioHandbook");
+
+  return wrapHandbookDocument({
+    title: `${scenario.code} 场景手册`,
+    extraStyles: handbookExtraStyles(),
+    bodySections: withBrand,
+    versionLabel: version
+  });
 }
 
 async function renderScenarioHandbookPdf(scenario, images, templates, options) {

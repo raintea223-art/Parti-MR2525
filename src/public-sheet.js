@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer-core");
 const { UPLOADS_DIR } = require("./storage");
+const { handbookDateLabel, renderLogoBar } = require("./design-system");
 
 /** 16:9 横版幻灯片尺寸（px，与 @page / puppeteer 一致） */
 const PAGE_W = 960;
@@ -178,9 +179,8 @@ function sheetStyles() {
 html, body {
   margin: 0;
   padding: 0;
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-  color: #0f172a;
-  background: #fff;
+  color: var(--ds-black);
+  background: var(--ds-white);
 }
 .page {
   width: ${PAGE_W}px;
@@ -189,7 +189,16 @@ html, body {
   overflow: hidden;
   page-break-after: always;
   break-after: page;
-  background: #fff;
+  background: var(--ds-white);
+}
+.page-info {
+  background: var(--ds-off-white);
+}
+.page-cover .ds-logo-bar {
+  top: 20px;
+  left: auto;
+  right: 28px;
+  flex-direction: row-reverse;
 }
 .page:last-child {
   page-break-after: auto;
@@ -209,7 +218,8 @@ html, body {
   right: 0;
   bottom: 0;
   padding: 10px 28px 14px;
-  background: linear-gradient(transparent, rgba(15, 23, 42, 0.72));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+  padding-bottom: 36px;
   color: #fff;
   font-size: 13px;
   letter-spacing: 0.4px;
@@ -219,9 +229,9 @@ html, body {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(15, 23, 42, 0.08) 0%,
-    rgba(15, 23, 42, 0.15) 42%,
-    rgba(15, 23, 42, 0.82) 100%
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.15) 42%,
+    rgba(0, 0, 0, 0.85) 100%
   );
 }
 .page-cover .cover-info {
@@ -278,8 +288,8 @@ html, body {
   inset: 0;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #1e293b, #334155);
-  color: #94a3b8;
+  background: var(--ds-black);
+  color: var(--ds-muted);
   font-size: 18px;
 }
 .page-inner {
@@ -301,7 +311,7 @@ html, body {
   display: block;
   width: 48px;
   height: 3px;
-  background: #0f172a;
+  background: var(--ds-black);
   margin-top: 10px;
 }
 .info-grid {
@@ -313,7 +323,7 @@ html, body {
 }
 .info-grid dt {
   margin: 0;
-  color: #64748b;
+  color: var(--ds-muted);
   font-size: 11px;
 }
 .info-grid dd {
@@ -321,8 +331,8 @@ html, body {
   font-weight: 600;
 }
 .note-block {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--ds-white);
+  border: 1px solid var(--ds-black);
   border-radius: 8px;
   padding: 12px 14px;
   white-space: pre-wrap;
@@ -332,12 +342,13 @@ html, body {
 }
 .note-label {
   font-size: 11px;
-  color: #64748b;
+  color: var(--ds-muted);
   margin: 0 0 6px;
   font-weight: 600;
 }
 .page-bom .page-inner {
   padding: 18px 36px 16px;
+  background: var(--ds-white);
 }
 .page-bom .page-title {
   margin-bottom: 10px;
@@ -358,7 +369,7 @@ html, body {
   margin: 0 0 3px;
   font-size: 10px;
   font-weight: 700;
-  color: #475569;
+  color: var(--ds-muted);
   letter-spacing: 0.2px;
 }
 .bom-block table {
@@ -371,18 +382,18 @@ html, body {
 }
 .page-bom th,
 .page-bom td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ds-black);
   padding: 2px 5px;
   text-align: left;
   line-height: 1.3;
 }
 .page-bom th {
-  background: #f1f5f9;
+  background: var(--ds-off-white);
   font-weight: 600;
   font-size: 8.5px;
 }
 .empty {
-  color: #94a3b8;
+  color: var(--ds-muted);
   font-size: 13px;
 }`;
 }
@@ -397,6 +408,7 @@ function renderCoverPage(template, coverData, tags, dims) {
 
   return `<section class="page page-cover">
   ${bg}
+  ${renderLogoBar()}
   ${coverData ? '<div class="cover-shade"></div>' : ""}
   <div class="cover-info">
     <h1 class="cover-name">${escapeHtml(template.name)}</h1>
@@ -487,17 +499,14 @@ function buildTemplatePages(template) {
 }
 
 function wrapSheetHtml(title, pageSections) {
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>${sheetStyles()}</style>
-</head>
-<body>
-  ${pageSections.join("\n")}
-</body>
-</html>`;
+  const { prependAppendBrandPages, wrapHandbookDocument } = require("./handbook-shell");
+  const withBrand = prependAppendBrandPages(pageSections, "templateHandbook");
+  return wrapHandbookDocument({
+    title,
+    extraStyles: "",
+    bodySections: withBrand,
+    versionLabel: handbookDateLabel()
+  });
 }
 
 function generatePublicSheetHtml(template) {

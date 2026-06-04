@@ -12,7 +12,7 @@ cd "c:\Users\zl450\Nutstore\1\我的坚果云\Cursor\mr2525-template-catalog"
 npm start
 ```
 
-浏览器 **Ctrl+F5** 强刷；侧栏底部 **UI 版本号** 用于确认前端已更新（场景标记：`UI 20260530d`；详情基本信息：`UI 20260531c`；标签/列表筛选：`UI 20260601c`，见 [DETAIL-BASIC-INFO-UPDATES](DETAIL-BASIC-INFO-UPDATES.md)、[TAG-LIB-UPDATES](TAG-LIB-UPDATES.md)）。
+浏览器 **Ctrl+F5** 强刷；侧栏底部 **UI 版本号** 用于确认前端已更新（当前 **`UI 20260531h`**，见 [UI-UPDATES-20260531](UI-UPDATES-20260531.md)）。
 
 ---
 
@@ -131,17 +131,27 @@ npm start
 
 ## 6. 场景手册 PDF
 
-**文件名：** `{场景代码}_场景手册.pdf`
+**文件名：** `{场景代码}_场景手册.pdf`  
+**品牌页编辑：** 见 [手册编辑指南](HANDBOOK-EDITING.md)（`data/handbook/brand.json`）。
 
-### 封面（Part A 首页）
+### 页序（默认开启品牌 intro/outro）
 
-在场景代表图（`picker_image` 或首张场景图）上叠加 **白色加粗** 文案：
+1. **品牌前言**（`pages.intro`，配置）
+2. **场景封面**（代表图 + 品牌三行 + `VYYYYMMDD`）
+3. 场景图 + 标记
+4. （可选）`pages.beforePartB`（`apply.scenarioHandbook.beforePartB`）
+5. 分隔「模板方案」→ Part B 模板图册页
+6. **品牌封底**（`pages.outro`）
+
+### 封面（场景代表图页）
+
+在场景代表图（`picker_image` 或首张场景图）上叠加 **白色加粗** 文案（文案来自 `brand.json` 的 `productName` / `scenarioTitleTemplate`）：
 
 | 行 | 内容 |
 |----|------|
-| 1 | `Parti空间编辑系统` |
+| 1 | `productName`（默认 `Parti空间编辑系统`） |
 | 2 | `——{场景名称}空间`（如 `——展厅空间`） |
-| 3 | 版本号 `VYYYYMMDD`（导出当日，如 `V20260530`） |
+| 3 | 版本号 `VYYYYMMDD`（导出当日） |
 
 无代表图时使用深色渐变底，同样显示上述三行。
 
@@ -159,7 +169,8 @@ npm start
 
 | 项 | 说明 |
 |----|------|
-| 构建标识 | `HANDBOOK_BUILD = 20260530-handbook-v2`，`npm start` 时打印，用于确认已加载新逻辑 |
+| 构建标识 | `HANDBOOK_BUILD = 20260603-handbook-brand-shell`，`npm start` 时打印 |
+| 品牌壳层 | `src/handbook-shell.js` + `data/handbook/brand.json` |
 | 模板范围 | `listTemplatesForScenarioHandbook()`：本场景已发布 + 全图标记引用的跨场景已发布（去重、按编号排序） |
 | 锚点 | 每套模板第一页 `<section id="tpl-{模板id}">` |
 | 内链 | 标记点 `<a href="#tpl-{id}">`；图例项同锚点；未关联或无对应页的标记不可点 |
@@ -167,7 +178,7 @@ npm start
 
 **验证清单（下载新 PDF 后）：**
 
-1. 终端启动日志含 `场景手册 PDF: 20260530-handbook-v2`  
+1. 终端启动日志含 `场景手册 PDF: 20260603-handbook-brand-shell`  
 2. 封面有三行白字：Parti空间编辑系统 / ——{场景名}空间 / V日期  
 3. 在 Adobe Acrobat 等阅读器中，点击效果图标记可跳到对应模板封面页  
 
@@ -197,7 +208,9 @@ SKP 选定后展示场景卡片网格；图源 `picker_image` → 首张效果�
 | PATCH | `/api/scenario-markers/:id` | write | 位置 / 模板 / label |
 | DELETE | `/api/scenario-markers/:id` | write | 删标记 |
 | GET | `/api/templates/published-picker` | read | 标记用已发布模板下拉（支持 `?q=`） |
+| GET | `/api/scenarios/:id/handbook.html` | read | 场景手册 HTML 预览 |
 | GET | `/api/scenarios/:id/handbook.pdf` | read | 场景手册 PDF |
+| GET | `/api/handbook/brand-preview.html` | read | 仅品牌 intro/outro 预览 |
 
 `/api/meta` 的 `scenarios` 由 DB 动态返回。
 
@@ -227,7 +240,9 @@ SKP 选定后展示场景卡片网格；图源 `picker_image` → 首张效果�
 | 文件 | 说明 |
 |------|------|
 | `src/scenarios.js` | CRUD、图片、标记、`findRecentMarkerNear`、`listTemplatesForScenarioHandbook` |
-| `src/scenario-handbook.js` | 手册 HTML/PDF、封面叠字、标记内链、`HANDBOOK_BUILD` |
+| `src/handbook-shell.js` | 品牌配置、intro/outro 页、`wrapHandbookDocument` |
+| `data/handbook/brand.json` | 品牌文案与 apply 开关 |
+| `src/scenario-handbook.js` | 场景手册 HTML/PDF、标记内链、`HANDBOOK_BUILD` |
 | `src/db.js` | 表结构 + `template_id` 可空迁移 |
 | `src/server.js` | 路由；启动日志输出项目目录与手册构建版本 |
 | `public/app.js` | 三级 UI、标记编辑 |
@@ -270,7 +285,7 @@ npm start
 
 ```
 项目目录: ...\我的坚果云\Cursor\mr2525-template-catalog
-场景手册 PDF: 20260530-handbook-v2
+场景手册 PDF: 20260603-handbook-brand-shell
 ```
 
 若**没有**第二行，说明仍在跑旧代码。导出 PDF 后封面应有 **Parti空间编辑系统** 三行白字，标记点可点击跳转。
@@ -282,7 +297,7 @@ npm start
 | 问题 | 处理 |
 |------|------|
 | 改了代码页面不变 | 确认在 **坚果云路径** 下 `npm start`；**Ctrl+F5**；看 UI 版本号 |
-| 改了代码 PDF 不变 | 多为 **未真正重启**（见 `EADDRINUSE`）；看启动日志是否有 `20260530-handbook-v2` |
+| 改了代码 PDF 不变 | 多为 **未真正重启**（见 `EADDRINUSE`）；看启动日志是否有 `20260603-handbook-brand-shell` |
 | 改后端无效 | **必须先停掉旧进程** 再启动（见 §12） |
 | `EADDRINUSE :3847` | 端口被旧 Node 占用，新代码**没有加载**；先 `Stop-Process` 再 `npm start` |
 | 在 `public` 里 `npm start` | 可启动但不直观；请在 **项目根目录**（含 `package.json` 的目录）执行 |
@@ -313,7 +328,7 @@ npm start
 | 2026-05-30 | **场景库 UI 增强**：admin 封面上传（`picker` API）；二级详情顶栏 `published_templates` 缩略图；效果图/渲染图拖拽上传；视图 ID 修正（`scenario-detail`） |
 | 2026-05-30 | **标记编辑修订**：`template_id` 可空；双击新建；服务端同位防重复插入；修复重复 POST/重复监听导致的「幽灵标记」；拖动预览层 + 乐观坐标；单击选中/空白取消选中；已关联模板选中后可再编辑；前端 `UI 20260530d` |
 | 2026-05-30 | **场景手册 PDF**：封面 Parti 品牌三行文案 + `VYYYYMMDD` 版本；标记点/图例 PDF 内链跳转模板页；Part B 含跨场景被引用模板 |
-| 2026-05-30 | **运维**：`server.js` 启动时打印 `项目目录` 与 `场景手册 PDF: 20260530-handbook-v2`；文档补充 `EADDRINUSE` 与双目录说明 |
+| 2026-05-30 | **运维**：`server.js` 启动时打印 `项目目录` 与 `场景手册 PDF: 20260603-handbook-brand-shell`；文档补充 `EADDRINUSE` 与双目录说明 |
 
 ---
 

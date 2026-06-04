@@ -24,8 +24,16 @@ const {
   enrichNutLine,
   enrichHardwareLine,
   resolvePurchaseLink,
-  importPanelCsv
+  importPanelCsv,
+  findPanelEntry
 } = require("./price-items");
+const {
+  previewMergePanelDuplicates,
+  executePanelMerge,
+  colorAllowedOnItem,
+  normalizeColorsInput,
+  buildPanelLabel
+} = require("./panel-price-colors");
 const {
   listSuppliers,
   updateSupplier,
@@ -117,10 +125,12 @@ const {
 } = require("./scenarios");
 const {
   HANDBOOK_BUILD,
+  generateScenarioHandbookHtml,
   renderScenarioHandbookPdf,
   handbookFilename,
   contentDisposition: handbookContentDisposition
 } = require("./scenario-handbook");
+const { generateBrandPreviewHtml } = require("./handbook-shell");
 const {
   UPLOADS_DIR,
   ensureTemplateAssetDirs,
@@ -444,6 +454,19 @@ app.post("/api/scenarios", ...adminAuth, (req, res) => {
   }
 });
 
+app.get("/api/scenarios/:id/handbook.html", ...readAuth, (req, res) => {
+  const scenario = getScenario(db, req.params.id);
+  if (!scenario) return res.status(404).json({ error: "场景不存在" });
+  try {
+    const images = listScenarioImages(db, scenario.id);
+    const templates = listTemplatesForScenarioHandbook(db, scenario, images);
+    res.type("html; charset=utf-8").send(generateScenarioHandbookHtml(scenario, images, templates));
+  } catch (e) {
+    console.error("[handbook.html]", e);
+    res.status(500).json({ error: e.message || "HTML 生成失败" });
+  }
+});
+
 app.get("/api/scenarios/:id/handbook.pdf", ...readAuth, async (req, res) => {
   const scenario = getScenario(db, req.params.id);
   if (!scenario) return res.status(404).json({ error: "场景不存在" });
@@ -458,6 +481,15 @@ app.get("/api/scenarios/:id/handbook.pdf", ...readAuth, async (req, res) => {
   } catch (e) {
     console.error("[handbook.pdf]", e);
     res.status(500).json({ error: e.message || "PDF 生成失败" });
+  }
+});
+
+app.get("/api/handbook/brand-preview.html", ...readAuth, (_req, res) => {
+  try {
+    res.type("html; charset=utf-8").send(generateBrandPreviewHtml());
+  } catch (e) {
+    console.error("[brand-preview.html]", e);
+    res.status(500).json({ error: e.message || "预览生成失败" });
   }
 });
 
@@ -1190,6 +1222,25 @@ app.delete("/api/hardware/:lineId", ...writeAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+app.patch("/api/panels/:lineId", ...writeAuth, (req, res) => {
+  if (!guardEditableQuoteLine(db, "quote_panels", req.params.lineId, res)) return;
+  const { color } = req.body || {};
+  if (!color?.trim()) return res.status(400).json({ error: "请选择颜色" });
+  const row = db.prepare("SELECT * FROM quote_panels WHERE id = ?").get(req.params.lineId);
+  if (!row) return res.status(404).json({ error: "记录不存在" });
+  if (!row.price_item_id) return res.status(400).json({ error: "该行无单价库引用" });
+  const item = getPriceItem(db, row.price_item_id);
+  if (!item || item.category !== "panel") {
+    return res.status(400).json({ error: "无效的板材单价项" });
+  }
+  if (!colorAllowedOnItem(db, row.price_item_id, color.trim())) {
+    return res.status(400).json({ error: "该颜色不在单价库条目可选范围内" });
+  }
+  db.prepare("UPDATE quote_panels SET color = ? WHERE id = ?").run(color.trim(), req.params.lineId);
+  const updated = db.prepare("SELECT * FROM quote_panels WHERE id = ?").get(req.params.lineId);
+  res.json(enrichPanelLine(updated, item, db));
+});
+
 app.post("/api/templates/:id/panels", ...writeAuth, (req, res) => {
   const template = guardEditableTemplateId(db, req.params.id, res);
   if (!template) return;
@@ -1223,23 +1274,32 @@ app.post("/api/templates/:id/panels", ...writeAuth, (req, res) => {
     }
     item = createPriceItem(db, {
       category: "panel",
-      label: label?.trim() || `${material_type} · ${color} · ${thickness_mm}mm`,
+      label: label?.trim() || buildPanelLabel(material_type, Number(thickness_mm)),
       material_type,
-      color,
+      colors: normalizeColorsInput({ color, color_hex: req.body.color_hex }),
       thickness_mm: Number(thickness_mm),
       unit_price,
       pricing_mode: pricing_mode || "per_sqm",
-      unit: "块"
+      unit: "块",
+      supplier: req.body.supplier || ""
     });
   } else {
+    const { color: panelColor } = req.body;
     if (!price_item_id) return res.status(400).json({ error: "请从单价库选择板材规格" });
+    if (!panelColor?.trim()) return res.status(400).json({ error: "请选择颜色" });
     item = getPriceItem(db, price_item_id);
     if (!item || item.category !== "panel") {
       return res.status(400).json({ error: "无效的板材单价项" });
     }
+    if (!colorAllowedOnItem(db, price_item_id, panelColor.trim())) {
+      return res.status(400).json({ error: "该颜色不在单价库条目可选范围内" });
+    }
   }
 
   const pricing = resolvePanelPricing(item);
+  const lineColor = manual
+    ? (item.colors?.[0]?.color || item.color || "").trim()
+    : (req.body.color || "").trim();
   const sort = nextSortOrder(db, "quote_panels", templateId);
   const result = db
     .prepare(
@@ -1252,7 +1312,7 @@ app.post("/api/templates/:id/panels", ...writeAuth, (req, res) => {
       templateId,
       item.id,
       item.material_type,
-      item.color,
+      lineColor,
       item.thickness_mm,
       item.label,
       Number(length_inch),
@@ -1265,7 +1325,7 @@ app.post("/api/templates/:id/panels", ...writeAuth, (req, res) => {
       sort
     );
   const row = db.prepare("SELECT * FROM quote_panels WHERE id = ?").get(result.lastInsertRowid);
-  res.status(201).json(enrichPanelLine(row, item));
+  res.status(201).json(enrichPanelLine(row, item, db));
 });
 
 app.delete("/api/panels/:lineId", ...writeAuth, (req, res) => {
@@ -1359,6 +1419,19 @@ app.get("/api/price-items", ...readAuth, (req, res) => {
 
 app.get("/api/price-items/panel-filters", ...readAuth, (_req, res) => {
   res.json(getPanelFilters(db));
+});
+
+app.get("/api/price-items/panel/merge-preview", ...priceAdmin, (_req, res) => {
+  res.json(previewMergePanelDuplicates(db));
+});
+
+app.post("/api/price-items/panel/merge-run", ...priceAdmin, (_req, res) => {
+  try {
+    const result = executePanelMerge(db);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.get("/api/price-items/panel/csv-template", ...readAuth, (_req, res) => {
@@ -1466,6 +1539,7 @@ app.post("/api/price-items", ...priceAdmin, (req, res) => {
       material_type,
       color,
       color_hex,
+      colors: body.colors,
       thickness_mm,
       link,
       supplier: supplier?.trim() || "",

@@ -212,7 +212,7 @@ data/
 | 页面能开但保存失败 | `docker compose logs -f` 看报错；检查 `data/` 目录权限 |
 | 容器反复重启 | 确认 NAS 架构（x86/arm）与 Node 镜像兼容；群晖较老型号可能是 arm |
 | 需要改端口 | 修改 `docker-compose.yml` 中 `ports`，如 `"8080:3847"` |
-| 场景手册 PDF 无更新 | 重建/重启容器后，日志应含 `场景手册 PDF: 20260530-handbook-v2`；见 [场景库说明](SCENARIO-LIB-UPDATES.md) §12 |
+| 场景手册 PDF 无更新 | 重建/重启容器后，日志应含 `场景手册 PDF: 20260603-handbook-brand-shell`；见 [手册编辑指南](HANDBOOK-EDITING.md) |
 
 ---
 

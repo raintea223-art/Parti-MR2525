@@ -242,6 +242,7 @@ erDiagram
 | 表名 | 用途 |
 |------|------|
 | `price_items` | 六通(nut) / 五金(hardware) / 板材(panel)；含对内/对外价、供应商、链接 |
+| `price_item_panel_colors` | 板材条目下的多色（color、color_hex）；FK → price_items |
 | `price_items_custom` | 非标件，可从模板「其他」Tab 沉淀 |
 | `suppliers` | 供应商联系人，从单价库汇总同步 |
 | `profile_formula` | 型材公式 rate/base/external_multiplier（单例配置） |
@@ -380,8 +381,9 @@ price_min/max = override 或 computed
 ### 5.4 单价库（price-items.js / price-custom.js）
 
 - **选取模式**：模板详情只能从单价库选取条目，不能直接改库价（editor）
-- **改价传播**：PATCH `price_items` 后，已引用行的 `unit_price` 自动同步
-- **板材 CSV 批量导入**：管理员专用接口
+- **改价传播**：PATCH `price_items` 后，已引用行单价等自动同步；板材 **不覆盖** `quote_panels.color`
+- **板材 CSV 批量导入**：支持分号多色、同条目合并颜色
+- **板材多色**：`panel-price-colors.js`；`GET/POST .../panel/merge-*`；`PATCH /api/panels/:lineId`
 - **非标件提升**：`promoteCustomToHardware` 沉淀至五金目录
 
 ### 5.5 标签系统（tags.js）
@@ -404,7 +406,7 @@ price_min/max = override 或 computed
 | 二级 | scenario_images 网格 | 拖拽上传效果图/渲染图 |
 | 三级 | scenario_markers | 百分比坐标标记 ↔ 已发布模板 |
 
-**场景手册 PDF（scenario-handbook.js）：**
+**场景手册 PDF（scenario-handbook.js + handbook-shell.js）：**
 
 - Puppeteer 渲染 HTML → PDF
 - 标记点可点击跳转模板方案页
@@ -523,7 +525,7 @@ sequenceDiagram
 - 统一 `api(path, options)` 封装，`credentials: 'include'`
 - 启动时 `GET /api/meta` 加载全局字典
 - 权限 UI：`canWrite()`, `canManagePrices()`, `canExport()` 等镜像后端 RBAC
-- 版本戳：`index.html` 中 `UI 20260603b`、`styles.css?v=` 防缓存
+- 版本戳：`index.html` 中 `UI 20260529b`、`styles.css?v=` 防缓存
 
 ---
 
@@ -666,9 +668,10 @@ flowchart LR
 | [docs/GALLERY-UPDATES.md](docs/GALLERY-UPDATES.md) | 图册导出 |
 | [docs/SCENARIO-LIB-UPDATES.md](docs/SCENARIO-LIB-UPDATES.md) | 场景库 |
 | [docs/TAG-LIB-UPDATES.md](docs/TAG-LIB-UPDATES.md) | 标签库 |
-| [docs/PRICE-LIB-UPDATES.md](docs/PRICE-LIB-UPDATES.md) | 单价库（含 §13 六通/五金图片） |
+| [docs/PRICE-LIB-UPDATES.md](docs/PRICE-LIB-UPDATES.md) | 单价库（§13 图片 · §15 五金 UI） |
+| [docs/UI-UPDATES-20260531.md](docs/UI-UPDATES-20260531.md) | 2026-05-31 全局 UI 与前端回归 |
 | [docs/DEEPENING-FORM-UPDATES.md](docs/DEEPENING-FORM-UPDATES.md) | 外包深化表单 |
-| [docs/UPGRADE-20260604.md](docs/UPGRADE-20260604.md) | 2026-06-04 升级摘要 |
+| [docs/UPGRADE-20260531.md](docs/UPGRADE-20260531.md) | 2026-05-31 升级摘要 |
 | [docs/DETAIL-BASIC-INFO-UPDATES.md](docs/DETAIL-BASIC-INFO-UPDATES.md) | 详情基本信息栏 |
 
 ---
