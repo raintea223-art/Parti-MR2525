@@ -3759,19 +3759,23 @@ function renderPriceForm(category, extra = {}) {
       toast("请填写供应商", true);
       return;
     }
-    const created = await api("/api/price-items", { method: "POST", body: JSON.stringify(body) });
-    if (priceAddImageFile && created?.id) {
-      try {
-        await uploadPriceItemImage(created.id, priceAddImageFile);
-      } catch (err) {
-        toast(`条目已添加，但图片上传失败：${err.message}`, true);
-        loadPrices(category);
-        return;
+    try {
+      const created = await api("/api/price-items", { method: "POST", body: JSON.stringify(body) });
+      if (priceAddImageFile && created?.id) {
+        try {
+          await uploadPriceItemImage(created.id, priceAddImageFile);
+        } catch (err) {
+          toast(`条目已添加，但图片上传失败：${err.message}`, true);
+          loadPrices(category);
+          return;
+        }
       }
+      priceAddImageFile = null;
+      toast("已添加到单价库");
+      loadPrices(category);
+    } catch (err) {
+      toast(err.message || "添加失败", true);
     }
-    priceAddImageFile = null;
-    toast("已添加到单价库");
-    loadPrices(category);
   });
 }
 

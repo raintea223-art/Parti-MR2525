@@ -186,7 +186,7 @@ app.post("/api/price-items/panel/merge-run", ...priceAdmin, (_req, res) => {
       `      material_type,
       color,
       color_hex,
-      colors: body.colors,
+      colors: req.body.colors,
       thickness_mm,
       link,
       supplier: supplier?.trim() || "",

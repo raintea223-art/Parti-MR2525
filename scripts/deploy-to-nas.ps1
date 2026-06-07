@@ -59,6 +59,14 @@ foreach ($item in $Include) {
   Copy-Item -Path $src -Destination (Join-Path $DestUnc $item) -Recurse -Force
 }
 
+$HandbookSrc = Join-Path $ProjectRoot "data\handbook"
+if (Test-Path $HandbookSrc) {
+  $HandbookDest = Join-Path $DestUnc "data\handbook"
+  New-Item -ItemType Directory -Path (Join-Path $DestUnc "data") -Force -ErrorAction SilentlyContinue | Out-Null
+  Copy-Item -Path $HandbookSrc -Destination $HandbookDest -Recurse -Force
+  Write-Host "Synced data/handbook (brand + design-system)."
+}
+
 Write-Host "Files uploaded to NAS." -ForegroundColor Green
 
 if ($UseSsh) {
