@@ -205,6 +205,10 @@ function switchView(name) {
     renderWorkflowPage();
     void renderWorkflowDiagrams();
   }
+
+  // 全站统一深色主题（图册与其他模块一致，不再区分浅色）
+  const mainEl = document.querySelector(".main");
+  if (mainEl) mainEl.classList.remove("is-light");
 }
 
 async function renderWorkflowDiagrams() {
@@ -315,7 +319,7 @@ flowchart TD
       <h3>主流程</h3>
       <div class="mermaid workflow-diagram">
 flowchart TD
-  A[录入员：上传 skp 登记] --> B[系统生成 TPL-场景-序号-文件名]
+  A[录入员：上传 skp 登记] --> B[系统生成 TPL-场景-序号]
   B --> C[待清单深化]
   C --> D[补全图·尺寸·报价清单·标签]
   D --> E[待审核]
@@ -405,7 +409,7 @@ flowchart LR
     <div class="card workflow-card">
       <h3>操作步骤（录入 → 审核 → 对外）</h3>
       <ol class="flow-steps">
-        <li><strong>登记</strong>：新建模板 → 上传 skp → 选场景 → 系统生成编号（格式 <code>TPL-场景-序号-文件名</code>），进入<strong>待清单深化</strong>。</li>
+        <li><strong>登记</strong>：新建模板 → 上传 skp → 选场景 → 系统生成编号（格式 <code>TPL-场景-序号</code>），进入<strong>待清单深化</strong>。</li>
         <li><strong>深化</strong>：上传实拍（可选）/ 效果图 / 渲染图；填宽×深×高；在报价清单录入型材（含颜色）、六通、五金、板材；<code>#</code> 打标签；填一句话卖点与报价口径；核对参考价 → <strong>→ 待审核</strong>。</li>
         <li><strong>审核</strong>：审核员在审核页勾选 checklist → <strong>通过并发布</strong>（生成审核单 PNG + 台账 CSV；非首次发布时版本 <strong>+0.1</strong>）或退回。</li>
         <li><strong>已发布维护</strong>：仅可改标签并「保存标签」；要改 BOM/图片等须 <strong>下架</strong> → 编辑 → 重新上架 → 再审核。</li>
@@ -3728,32 +3732,32 @@ function renderPriceForm(category, extra = {}) {
     const body = Object.fromEntries(fd.entries());
     body.category = category;
     body.unit = body.unit || (category === "panel" ? "块" : "个");
-    if (category === "panel") {
-      body.material_type = body.material_type?.trim();
-      body.supplier = body.supplier?.trim();
-      let colors = [];
-      try {
-        colors = JSON.parse(body.colors_json || "[]");
-      } catch {
-        colors = [];
-      }
-      if (!body.material_type) {
-        toast("请填写材质", true);
-        return;
-      }
-      if (!colors.length) {
-        toast("请至少添加一种颜色", true);
-        return;
-      }
-      if (!body.supplier) {
-        toast("请填写供应商", true);
-        return;
-      }
-      body.colors = colors;
-      delete body.colors_json;
-      if (!body.label) {
-        body.label = `${body.material_type} · ${body.thickness_mm}mm`;
-      }
+    if (category === "panel") {
+      body.material_type = body.material_type?.trim();
+      body.supplier = body.supplier?.trim();
+      let colors = [];
+      try {
+        colors = JSON.parse(body.colors_json || "[]");
+      } catch {
+        colors = [];
+      }
+      if (!body.material_type) {
+        toast("请填写材质", true);
+        return;
+      }
+      if (!colors.length) {
+        toast("请至少添加一种颜色", true);
+        return;
+      }
+      if (!body.supplier) {
+        toast("请填写供应商", true);
+        return;
+      }
+      body.colors = colors;
+      delete body.colors_json;
+      if (!body.label) {
+        body.label = `${body.material_type} · ${body.thickness_mm}mm`;
+      }
     }
     if (category === "hardware" && !body.supplier?.trim()) {
       toast("请填写供应商", true);
@@ -4492,7 +4496,7 @@ async function loadScenarios() {
     adminBar.classList.remove("hidden");
     adminBar.innerHTML = `<form id="scenario-add-form" class="hardware-add full">
       <label>场景名称<input name="name" required placeholder="如 快闪店" /></label>
-      <label>代码(2位)<input name="code" required maxlength="2" pattern="[A-Za-z]{2}" placeholder="KS" /></label>
+      <label>代码(3位)<input name="code" required maxlength="3" pattern="[A-Za-z]{3}" placeholder="SHW" /></label>
       <label>slug 前缀<input name="slug_prefix" required placeholder="kuaishandian" /></label>
       <label>简介<input name="description" placeholder="可选" /></label>
       <button type="submit" class="btn primary">添加场景</button>
@@ -4610,7 +4614,7 @@ async function loadScenarioDetail(id) {
             .map((t) => {
               const thumb = t.cover_image
                 ? `<img src="${escapeAttr(t.cover_image)}" alt="" loading="lazy" />`
-                : `<span class="scenario-template-thumb-placeholder">${escapeHtml(t.template_code.slice(-2))}</span>`;
+                : `<span class="scenario-template-thumb-placeholder">${escapeHtml(t.template_code.slice(-3))}</span>`;
               return `<button type="button" class="scenario-template-thumb" data-template-id="${t.id}" title="${escapeAttr(t.template_code + " · " + t.name)}" tabindex="0">${thumb}</button>`;
             })
             .join("")}

@@ -1,14 +1,16 @@
 /** @typedef {'draft'|'pending_quote'|'pending_review'|'published'|'archived'} TemplateStatus */
 
 const SCENARIOS = [
-  { value: "展厅", code: "ZT", slugPrefix: "zhanting" },
-  { value: "零售", code: "LS", slugPrefix: "lingshou" },
-  { value: "活动", code: "HD", slugPrefix: "huodong" },
-  { value: "办公", code: "BG", slugPrefix: "bangong" },
-  { value: "会展", code: "HZ", slugPrefix: "huizhan" },
-  { value: "宠物", code: "CW", slugPrefix: "chongwu" },
-  { value: "市集", code: "SJ", slugPrefix: "shiji" },
-  { value: "其他", code: "OT", slugPrefix: "qita" }
+  { value: "展厅", code: "SHW", slugPrefix: "zhanting" },
+  { value: "零售", code: "RET", slugPrefix: "lingshou" },
+  { value: "活动", code: "EVT", slugPrefix: "huodong" },
+  { value: "办公", code: "OFF", slugPrefix: "bangong" },
+  { value: "会展", code: "EXH", slugPrefix: "huizhan" },
+  { value: "宠物", code: "PET", slugPrefix: "chongwu" },
+  { value: "市集", code: "MKT", slugPrefix: "shiji" },
+  { value: "其他", code: "OTH", slugPrefix: "qita" },
+  { value: "轻餐饮", code: "FNB", slugPrefix: "qingcanyin" },
+  { value: "公园商业", code: "PRK", slugPrefix: "gongyuanshangye" }
 ];
 
 const SCENARIO_MAP = Object.fromEntries(SCENARIOS.map((s) => [s.value, s]));

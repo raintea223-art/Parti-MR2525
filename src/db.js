@@ -308,7 +308,7 @@ function initSchema(db) {
     CREATE TABLE IF NOT EXISTS scenarios (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      code TEXT NOT NULL UNIQUE CHECK(length(code) = 2),
+      code TEXT NOT NULL UNIQUE CHECK(length(code) = 3),
       slug_prefix TEXT NOT NULL,
       picker_image TEXT DEFAULT '',
       description TEXT DEFAULT '',
@@ -341,8 +341,10 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_scenario_markers_template ON scenario_markers(template_id);
   `);
 
-  const { seedScenarios } = require("./scenarios");
+  const { seedScenarios, migrateScenarioCodes, migrateTemplateSequence } = require("./scenarios");
   seedScenarios(db);
+  migrateScenarioCodes(db);
+  migrateTemplateSequence(db);
 
   migrateScenarioMarkersNullableTemplate(db);
 

@@ -1,60 +1,76 @@
-/* MR2525 Template Catalog — MakerWorld-inspired UI */
+/* MR2525 Template Catalog — Edgeware X inspired UI */
 
 :root {
-  /* Core palette (Bambu Lab / MakerWorld) */
-  --ink: #1f1f1f;
-  --ink-soft: #434343;
-  --ink-muted: #8c8c8c;
-  --ink-faint: #bfbfbf;
-  --on-primary: #ffffff;
-  --on-dark: #1f1f1f;
+  /* Core palette — Edgeware X 深色主题（黑底白字 + 亮蓝 + 品红光晕） */
+  --ink: #f5f5f5;
+  --ink-soft: #d6d6d6;
+  --ink-muted: #8f8f8f;
+  --ink-faint: #565656;
+  --on-primary: #000000;
+  --on-dark: #ffffff;
 
-  --sidebar-bg: #ffffff;
-  --sidebar-surface: #fafafa;
-  --sidebar-border: #e8e8e8;
+  --sidebar-bg: #0d0d0d;
+  --sidebar-surface: #141414;
+  --sidebar-border: rgba(255, 255, 255, 0.10);
 
-  --canvas: #f5f5f5;
-  --canvas-paper: #fafafa;
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
+  --canvas: #000000;
+  --canvas-paper: #0d0d0d;
+  --surface: #0d0d0d;
+  --surface-raised: #151515;
 
-  --accent: #00ae42;
-  --accent-hover: #009a3a;
-  --accent-light: #e8f8ef;
-  --accent-glow: rgba(0, 174, 66, 0.24);
+  /* Brand — Edgeware 玫红（品红）主点缀色 */
+  --accent: #ff008c;
+  --accent-hover: #ff2ba0;
+  --accent-light: rgba(255, 0, 140, 0.14);
+  --accent-glow: rgba(255, 0, 140, 0.30);
 
-  --steel: #595959;
-  --steel-light: #f0f0f0;
-  --steel-muted: #8c8c8c;
+  /* Accent 2 — 品红霓虹 / 光晕（与主点缀同族，保留独立变量） */
+  --pink: #ff008c;
+  --pink-light: rgba(255, 0, 140, 0.14);
+  --pink-glow: rgba(255, 0, 140, 0.19);
 
-  --success: #00ae42;
-  --success-bg: #e8f8ef;
-  --success-border: #b7eb8f;
+  --steel: #a1a1a1;
+  --steel-light: #1c1c1c;
+  --steel-muted: #6b6b6b;
 
-  --danger: #ff4d4f;
-  --danger-bg: #fff2f0;
-  --danger-border: #ffccc7;
+  /* 状态语义色（深色适配，与品牌色解耦） */
+  --success: #2fbf71;
+  --success-bg: rgba(47, 191, 113, 0.14);
+  --success-border: rgba(47, 191, 113, 0.38);
 
-  --warning-bg: #fffbe6;
-  --warning-border: #ffe58f;
-  --warning-text: #ad6800;
+  --danger: #ff5c5f;
+  --danger-bg: rgba(255, 92, 95, 0.14);
+  --danger-border: rgba(255, 92, 95, 0.38);
 
-  --hairline: rgba(0, 0, 0, 0.06);
-  --hairline-strong: rgba(0, 0, 0, 0.12);
+  --warning-bg: rgba(255, 190, 40, 0.14);
+  --warning-border: rgba(255, 190, 40, 0.38);
+  --warning-text: #ffc53d;
 
-  /* Typography — HarmonyOS Sans SC (MakerWorld CN) */
-  --font-display: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-body: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-label: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-mono: "HarmonyOS Sans SC", "Consolas", "SF Mono", ui-monospace, monospace;
+  /* 中性（白透明层次，深色 UI 正统做法） */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --border: rgba(255, 255, 255, 0.12);
+  --surface-2: rgba(255, 255, 255, 0.06);
 
-  /* Radius */
+  /* Typography — Figtree(拉丁/数字) + HarmonyOS Sans SC(中文)；官网无等宽字体 */
+  --font-display: "Figtree", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Figtree", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-label: "Figtree", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "Consolas", ui-monospace, monospace;
+
+  /* Radius — 直角为主 + 胶囊按钮（呼应官网 0px 区块 + 40px 按钮） */
   --r-xs: 4px;
   --r-sm: 6px;
   --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  --r-lg: 10px;
+  --r-xl: 14px;
   --r-pill: 999px;
+
+  /* Radius 别名（供 var(--radius-sm) 等 fallback 引用统一） */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
 
   /* Spacing */
   --s-xxs: 2px;
@@ -66,10 +82,10 @@
   --s-xxl: 32px;
   --s-huge: 56px;
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  /* Elevation — 深色下弱阴影 + 细描边，偏「硬边框」而非浮起 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.50);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.60);
   --shadow-glow: 0 0 0 3px var(--accent-glow);
 
   /* Motion */
@@ -149,7 +165,7 @@ body.loaded .view.active > .formula-hint { animation-delay: 0.04s; }
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--accent);
+  background: linear-gradient(180deg, #ff008c 0%, #c96ef0 100%);
 }
 
 .brand {
@@ -310,6 +326,8 @@ body.loaded .view.active > .formula-hint { animation-delay: 0.04s; }
   min-width: 0;
   padding: clamp(16px, 1.5vw, 24px) clamp(20px, 2.5vw, 40px) 48px;
   overflow-x: hidden;
+  background: var(--canvas);
+  color: var(--ink);
 }
 
 .main-grid {
@@ -514,8 +532,8 @@ input[type="search"] { min-height: 42px; }
       -45deg,
       transparent,
       transparent 8px,
-      rgba(0, 174, 66, 0.04) 8px,
-      rgba(0, 174, 66, 0.04) 9px
+      rgba(255, 0, 140, 0.05) 8px,
+      rgba(255, 0, 140, 0.05) 9px
     ),
     var(--canvas-paper);
   padding: var(--s-huge) var(--s-xl);
@@ -687,7 +705,7 @@ input[type="search"] { min-height: 42px; }
 
 .btn.aloe:hover,
 .btn.success:hover {
-  background: #c3e6cb;
+  background: var(--success-border);
   border-color: var(--success);
 }
 
@@ -698,7 +716,7 @@ input[type="search"] { min-height: 42px; }
 }
 
 .btn.danger:hover {
-  background: #fad4d4;
+  background: var(--danger-border);
   border-color: var(--danger);
 }
 
@@ -741,7 +759,7 @@ td {
 }
 
 th {
-  background: #fafafa;
+  background: var(--canvas-paper);
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 500;
@@ -751,7 +769,7 @@ th {
   white-space: nowrap;
 }
 
-tr:hover td { background: rgba(244, 242, 236, 0.6); }
+tr:hover td { background: var(--surface-2); }
 tr:last-child td { border-bottom: 0; }
 
 tfoot td {
@@ -808,7 +826,7 @@ tfoot td {
 }
 
 .badge.pending_model {
-  background: #e2e8f0;
+  background: var(--steel-light);
   color: var(--ink-soft);
 }
 
@@ -819,7 +837,7 @@ tfoot td {
 
 .badge.pending_review {
   background: var(--accent-light);
-  color: #7a4d08;
+  color: var(--warning-text);
 }
 
 .badge.published {
@@ -830,7 +848,7 @@ tfoot td {
 
 .badge.archived,
 .badge.draft {
-  background: #edf0f4;
+  background: var(--steel-light);
   color: var(--ink-muted);
 }
 
@@ -849,7 +867,7 @@ tfoot td {
 
 .success-panel code {
   font-family: var(--font-mono);
-  background: rgba(45, 106, 79, 0.1);
+  background: var(--success-bg);
   padding: 2px 7px;
   border-radius: var(--r-xs);
   font-size: 13px;
@@ -982,8 +1000,8 @@ tfoot td {
       45deg,
       transparent,
       transparent 6px,
-      rgba(61, 90, 128, 0.04) 6px,
-      rgba(61, 90, 128, 0.04) 7px
+      var(--hairline) 6px,
+      var(--hairline) 7px
     );
 }
 
@@ -1611,7 +1629,7 @@ tfoot td {
 
 .detail-legacy-note {
   padding: var(--s-md);
-  background: var(--surface-2, #f6f4f0);
+  background: var(--surface-2, #f6f7f9);
   border: 1px dashed var(--border, #ddd);
   border-radius: var(--radius-sm, 6px);
   font-size: 0.92rem;
@@ -1625,7 +1643,7 @@ tfoot td {
   align-items: center;
   gap: var(--s-sm);
   padding: var(--s-sm) var(--s-md);
-  border: 1px solid var(--border, #d8d4cc);
+  border: 1px solid var(--border, #e5e7eb);
   border-radius: var(--radius-sm, 6px);
   background: var(--surface, #fff);
   cursor: pointer;
@@ -1635,20 +1653,20 @@ tfoot td {
 }
 
 .checkbox-chip:hover {
-  border-color: var(--accent, #00ae42);
+  border-color: var(--accent, #ff008c);
 }
 
 .checkbox-chip.is-checked {
-  border-color: var(--accent, #00ae42);
-  background: color-mix(in srgb, var(--accent, #00ae42) 8%, #fff);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #00ae42) 25%, transparent);
+  border-color: var(--accent, #ff008c);
+  background: color-mix(in srgb, var(--accent, #ff008c) 8%, var(--surface, #fff));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #ff008c) 25%, transparent);
 }
 
 .checkbox-chip input {
   margin: 0;
   width: 1rem;
   height: 1rem;
-  accent-color: var(--accent, #00ae42);
+  accent-color: var(--accent, #ff008c);
   cursor: pointer;
 }
 
@@ -1668,7 +1686,7 @@ tfoot td {
   gap: var(--s-md);
   width: 100%;
   padding: var(--s-sm);
-  border: 1px solid var(--border, #d8d4cc);
+  border: 1px solid var(--border, #e5e7eb);
   border-radius: var(--radius-sm, 6px);
   background: var(--surface, #fff);
   cursor: pointer;
@@ -1676,7 +1694,7 @@ tfoot td {
 }
 
 .cover-source-trigger:hover {
-  border-color: var(--accent, #00ae42);
+  border-color: var(--accent, #ff008c);
 }
 
 .cover-source-trigger-thumb {
@@ -1706,7 +1724,7 @@ tfoot td {
   max-height: 280px;
   overflow-y: auto;
   background: var(--surface, #fff);
-  border: 1px solid var(--border, #d8d4cc);
+  border: 1px solid var(--border, #e5e7eb);
   border-radius: var(--radius-sm, 6px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   padding: var(--s-xs);
@@ -1730,11 +1748,11 @@ tfoot td {
 }
 
 .cover-source-option:hover {
-  background: var(--surface-2, #f6f4f0);
+  background: var(--surface-2, #f6f7f9);
 }
 
 .cover-source-option.is-selected {
-  background: color-mix(in srgb, var(--accent, #00ae42) 10%, #fff);
+  background: color-mix(in srgb, var(--accent, #ff008c) 10%, var(--surface, #fff));
 }
 
 .cover-source-option img {
@@ -1782,14 +1800,14 @@ tfoot td {
   padding: 0.15em 0.35em;
   border: none;
   background: transparent;
-  color: var(--accent, #00ae42);
+  color: var(--accent, #ff008c);
   cursor: pointer;
   font-weight: 600;
   transition: color 0.15s, transform 0.15s;
 }
 
 .tag-cloud-item:hover {
-  color: var(--ink, #1a1814);
+  color: var(--ink, #222222);
   transform: scale(1.06);
 }
 
@@ -1834,7 +1852,7 @@ tfoot td {
   gap: var(--s-sm) var(--s-md);
   margin-top: var(--s-md);
   padding-top: var(--s-md);
-  border-top: 1px solid var(--hairline, #e8e4dc);
+  border-top: 1px solid var(--hairline, #ececec);
 }
 
 .list-tag-filter-label {
@@ -1864,7 +1882,7 @@ tfoot td {
 }
 
 .tag-pill-filter {
-  background: color-mix(in srgb, var(--accent, #00ae42) 18%, #fff);
+  background: color-mix(in srgb, var(--accent, #ff008c) 18%, var(--surface, #fff));
 }
 
 .list-toolbar-tags:focus-within .list-tag-filter-compose {
@@ -1907,7 +1925,7 @@ tfoot td {
 }
 
 .tag-quick-add {
-  border: 1px dashed var(--border, #d8d4cc);
+  border: 1px dashed var(--border, #e5e7eb);
   background: var(--surface, #fff);
   color: var(--ink-muted);
   border-radius: 999px;
@@ -1917,8 +1935,8 @@ tfoot td {
 }
 
 .tag-quick-add:hover {
-  border-color: var(--accent, #00ae42);
-  color: var(--accent, #00ae42);
+  border-color: var(--accent, #ff008c);
+  color: var(--accent, #ff008c);
 }
 
 .tag-editor-pills {
@@ -1934,8 +1952,8 @@ tfoot td {
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.55rem;
-  background: color-mix(in srgb, var(--accent, #00ae42) 12%, #fff);
-  border: 1px solid color-mix(in srgb, var(--accent, #00ae42) 35%, transparent);
+  background: color-mix(in srgb, var(--accent, #ff008c) 12%, var(--surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--accent, #ff008c) 35%, transparent);
   border-radius: 999px;
   font-size: 0.88rem;
 }
@@ -1951,7 +1969,7 @@ tfoot td {
 }
 
 .tag-pill-remove:hover {
-  color: var(--ink, #1a1814);
+  color: var(--ink, #222222);
 }
 
 .tag-editor-compose {
@@ -1962,15 +1980,15 @@ tfoot td {
   width: 100%;
   max-width: 420px;
   padding: var(--s-sm) var(--s-md);
-  border: 1px solid var(--border, #d8d4cc);
+  border: 1px solid var(--border, #e5e7eb);
   border-radius: var(--radius-sm, 6px);
   font-size: 0.95rem;
 }
 
 .tag-editor-input:focus {
   outline: none;
-  border-color: var(--accent, #00ae42);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #00ae42) 18%, transparent);
+  border-color: var(--accent, #ff008c);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #ff008c) 18%, transparent);
 }
 
 .tag-editor-dropdown {
@@ -1983,7 +2001,7 @@ tfoot td {
   max-height: 240px;
   overflow-y: auto;
   background: var(--surface, #fff);
-  border: 1px solid var(--border, #d8d4cc);
+  border: 1px solid var(--border, #e5e7eb);
   border-radius: var(--radius-sm, 6px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
@@ -2007,7 +2025,7 @@ tfoot td {
 
 .tag-dropdown-option:hover,
 .tag-dropdown-option.is-active {
-  background: var(--surface-2, #f6f4f0);
+  background: var(--surface-2, #f6f7f9);
 }
 
 .tag-dropdown-option .tag-dropdown-count {
@@ -2016,7 +2034,7 @@ tfoot td {
 }
 
 .tag-dropdown-create {
-  color: var(--accent, #00ae42);
+  color: var(--accent, #ff008c);
   font-weight: 500;
 }
 
@@ -2332,12 +2350,14 @@ code {
 
 .auth-glow {
   position: absolute;
-  top: 20%;
+  top: 18%;
   left: 50%;
   transform: translateX(-50%);
-  width: 600px;
-  height: 400px;
-  background: radial-gradient(ellipse, rgba(0, 174, 66, 0.08) 0%, transparent 70%);
+  width: 720px;
+  height: 480px;
+  background:
+    radial-gradient(ellipse at 30% 30%, var(--pink-glow) 0%, transparent 55%),
+    radial-gradient(ellipse at 70% 60%, var(--accent-glow) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -2356,13 +2376,14 @@ code {
 .auth-brand { margin-bottom: var(--s-xs); }
 
 .auth-mark {
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  color: var(--ink);
-  line-height: 1;
-  margin-bottom: var(--s-sm);
+  width: 132px;
+  margin-bottom: var(--s-md);
+}
+
+.auth-mark img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .auth-card .eyebrow { color: var(--accent); }
@@ -3183,7 +3204,7 @@ code {
 }
 
 .deepening-preview-errors {
-  color: #b91c1c;
+  color: var(--danger);
   font-size: 13px;
   margin: var(--s-md) 0;
 }

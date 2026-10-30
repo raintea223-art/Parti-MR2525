@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { SCENARIOS } = require("./constants");
 const { listTemplates, getTemplate } = require("./db");
-const { UPLOADS_DIR, toPublicUrl } = require("./storage");
+const { UPLOADS_DIR, toPublicUrl, getTemplateAssetDir, getAuditTemplateDir } = require("./storage");
 
 const SCENARIO_IMAGE_KINDS = {
   effect: { folder: "效果图", label: "效果图" },
@@ -139,8 +139,8 @@ function validateScenarioCode(code) {
   const c = String(code || "")
     .trim()
     .toUpperCase();
-  if (!/^[A-Z]{2}$/.test(c)) {
-    throw new Error("场景代码须为 2 位大写字母");
+  if (!/^[A-Z]{3}$/.test(c)) {
+    throw new Error("场景代码须为 3 位大写字母");
   }
   return c;
 }
@@ -539,6 +539,213 @@ function listPublishedTemplatesForPicker(db, q) {
   }));
 }
 
+/** 旧 2 位拼音码 → 新 3 位英文码（模板编号规范 v1.3 定稿）。 */
+const LEGACY_SCENARIO_CODES = {
+  ZT: "SHW",
+  LS: "RET",
+  HD: "EVT",
+  BG: "OFF",
+  HZ: "EXH",
+  CW: "PET",
+  SJ: "MKT",
+  OT: "OTH"
+};
+
+const ADDED_SCENARIOS = [
+  { value: "轻餐饮", code: "FNB", slugPrefix: "qingcanyin" },
+  { value: "公园商业", code: "PRK", slugPrefix: "gongyuanshangye" }
+];
+
+function migrateScenarioCodes(db) {
+  const rows = db.prepare("SELECT * FROM scenarios ORDER BY id").all();
+  const hasLegacy = rows.some((r) => LEGACY_SCENARIO_CODES[r.code]);
+  const hasNew = rows.some((r) => /^[A-Z]{3}$/.test(r.code));
+  if (!hasLegacy && hasNew) return false;
+
+  // 1) 计算模板编号改写：TPL-{旧码}-{序号}[-{名称}] → TPL-{新码}-...
+  const templateRenames = [];
+  const tplRows = db.prepare("SELECT id, template_code FROM templates").all();
+  for (const t of tplRows) {
+    const m = /^TPL-([A-Z]{2,3})-(\d+)(-.+)?$/.exec(t.template_code || "");
+    if (!m) continue;
+    const newCode = LEGACY_SCENARIO_CODES[m[1]];
+    if (!newCode) continue;
+    templateRenames.push({
+      id: t.id,
+      old: t.template_code,
+      new: `TPL-${newCode}-${m[2]}${m[3] || ""}`
+    });
+  }
+
+  // 2) 文件系统重命名（先文件后库；源不存在则跳过）
+  const fsOps = [];
+  for (const r of rows) {
+    const newCode = LEGACY_SCENARIO_CODES[r.code];
+    if (newCode && newCode !== r.code) {
+      fsOps.push({
+        from: path.join(UPLOADS_DIR, "scenarios", r.code),
+        to: path.join(UPLOADS_DIR, "scenarios", newCode)
+      });
+    }
+  }
+  for (const tr of templateRenames) {
+    fsOps.push({ from: getTemplateAssetDir(tr.old), to: getTemplateAssetDir(tr.new) });
+    fsOps.push({ from: getAuditTemplateDir(tr.old), to: getAuditTemplateDir(tr.new) });
+  }
+  for (const op of fsOps) {
+    if (fs.existsSync(op.from) && !fs.existsSync(op.to)) {
+      fs.renameSync(op.from, op.to);
+    }
+  }
+  for (const ns of ADDED_SCENARIOS) {
+    ensureScenarioDirs(ns.code);
+  }
+
+  // 3) 数据库改写（foreign_keys 须在事务外关闭，事务内无效）
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN");
+  try {
+    for (const im of db.prepare("SELECT id, file_path FROM scenario_images").all()) {
+      const m = /\/uploads\/scenarios\/([A-Z]{2})\//.exec(im.file_path || "");
+      if (m && LEGACY_SCENARIO_CODES[m[1]]) {
+        const next = im.file_path.replace(
+          `/scenarios/${m[1]}/`,
+          `/scenarios/${LEGACY_SCENARIO_CODES[m[1]]}/`
+        );
+        db.prepare("UPDATE scenario_images SET file_path = ? WHERE id = ?").run(next, im.id);
+      }
+    }
+
+    for (const tr of templateRenames) {
+      const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(tr.id);
+      if (!row) continue;
+      const fields = ["cover_image", "skp_file", "photo_images", "effect_images", "render_images", "gallery_images"];
+      const vals = fields.map((f) => {
+        const v = row[f];
+        return typeof v === "string" && v.includes(tr.old) ? v.split(tr.old).join(tr.new) : v;
+      });
+      db.prepare(
+        `UPDATE templates SET
+           template_code = ?,
+           cover_image = ?,
+           skp_file = ?,
+           photo_images = ?,
+           effect_images = ?,
+           render_images = ?,
+           gallery_images = ?
+         WHERE id = ?`
+      ).run(tr.new, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], tr.id);
+    }
+
+    // 重建 scenarios 表：码改为 3 位并放松/收紧长度约束
+    db.exec(`
+      CREATE TABLE scenarios_mig (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        code TEXT NOT NULL UNIQUE CHECK(length(code) = 3),
+        slug_prefix TEXT NOT NULL,
+        picker_image TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    const ins = db.prepare(
+      `INSERT INTO scenarios_mig
+         (id, name, code, slug_prefix, picker_image, description, sort_order, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    for (const r of rows) {
+      const code = LEGACY_SCENARIO_CODES[r.code] || r.code;
+      ins.run(r.id, r.name, code, r.slug_prefix, r.picker_image, r.description, r.sort_order, r.enabled, r.created_at, r.updated_at);
+    }
+    for (const ns of ADDED_SCENARIOS) {
+      const exists = db.prepare("SELECT id FROM scenarios_mig WHERE code = ? OR name = ?").get(ns.code, ns.value);
+      if (!exists) {
+        const sort = db.prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM scenarios_mig").get().n;
+        const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+        ins.run(null, ns.value, ns.code, ns.slugPrefix, "", "", sort, 1, now, now);
+      }
+    }
+    db.exec("DROP TABLE scenarios; ALTER TABLE scenarios_mig RENAME TO scenarios;");
+
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+  return true;
+}
+
+/**
+ * 模板序号迁移：TPL-{码}-{4位序号}[-名称] → TPL-{码}-{3位序号}（模板编号规范 v1.3）。
+ * 同步改写 slug（{prefix}-{4位序号}[-名称] → {prefix}-{3位序号}）、路径 JSON 字段与文件系统目录。
+ */
+function migrateTemplateSequence(db) {
+  const rows = db.prepare("SELECT * FROM templates ORDER BY id").all();
+  const renames = [];
+  for (const r of rows) {
+    const m = /^TPL-([A-Z]{3})-(\d+)(?:-.*)?$/.exec(r.template_code || "");
+    if (!m) continue;
+    const target = `TPL-${m[1]}-${String(parseInt(m[2], 10)).padStart(3, "0")}`;
+
+    const sm = /^([a-z0-9]+)-(\d+)(?:-.*)?$/.exec(r.slug || "");
+    const newSlug = sm ? `${sm[1]}-${String(parseInt(sm[2], 10)).padStart(3, "0")}` : r.slug;
+
+    if (target === r.template_code && newSlug === r.slug) continue;
+    renames.push({ id: r.id, old: r.template_code, new: target, newSlug });
+  }
+  if (!renames.length) return false;
+
+  // 1) 文件系统重命名（先文件后库；源不存在则跳过）
+  for (const tr of renames) {
+    const fromAsset = getTemplateAssetDir(tr.old);
+    const toAsset = getTemplateAssetDir(tr.new);
+    if (fs.existsSync(fromAsset) && !fs.existsSync(toAsset)) fs.renameSync(fromAsset, toAsset);
+    const fromAudit = getAuditTemplateDir(tr.old);
+    const toAudit = getAuditTemplateDir(tr.new);
+    if (fs.existsSync(fromAudit) && !fs.existsSync(toAudit)) fs.renameSync(fromAudit, toAudit);
+  }
+
+  // 2) 数据库改写（foreign_keys 须在事务外关闭）
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN");
+  try {
+    for (const tr of renames) {
+      const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(tr.id);
+      if (!row) continue;
+      const fields = ["cover_image", "skp_file", "photo_images", "effect_images", "render_images", "gallery_images"];
+      const vals = fields.map((f) => {
+        const v = row[f];
+        return typeof v === "string" && v.includes(tr.old) ? v.split(tr.old).join(tr.new) : v;
+      });
+      db.prepare(
+        `UPDATE templates SET
+           template_code = ?,
+           slug = ?,
+           cover_image = ?,
+           skp_file = ?,
+           photo_images = ?,
+           effect_images = ?,
+           render_images = ?,
+           gallery_images = ?
+         WHERE id = ?`
+      ).run(tr.new, tr.newSlug, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], tr.id);
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+  return true;
+}
+
 module.exports = {
   SCENARIO_IMAGE_KINDS,
   seedScenarios,
@@ -566,6 +773,9 @@ module.exports = {
   listTemplatesForScenarioHandbook,
   setScenarioPickerFromUpload,
   clearScenarioPicker,
+  migrateScenarioCodes,
+  migrateTemplateSequence,
+  LEGACY_SCENARIO_CODES,
   SCENARIO_PICKER_FOLDER,
   toPublicUrl
 };

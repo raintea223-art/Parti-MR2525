@@ -302,7 +302,7 @@
 
 - [详情基本信息栏](DETAIL-BASIC-INFO-UPDATES.md) — 可定制开关与板材 BOM 分工  
 - [模板列表变更说明](TEMPLATE-LIST-UPDATES.md) — 序号、封面、三态排序  
-- [模板编号规则](MR2525模板库协作SOP.md) §12 — `TPL-场景-序号-文件名`  
+- [模板编号规则](MR2525模板库协作SOP.md) §12 — `TPL-场景-序号`  
 - [模板图册](GALLERY-UPDATES.md) — 展示图、方案手册 PDF、内部清单 CSV 与批量下载
 - [场景库](SCENARIO-LIB-UPDATES.md) — 场景图标记、场景手册 PDF
 - [升级摘要 2026-05-31](UPGRADE-20260531.md)

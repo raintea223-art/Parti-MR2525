@@ -3,3 +3,5 @@ data/catalog.db
 data/catalog.db-*
 data/uploads/
 *.log
+data/_backup_*/
+_shots/

@@ -28,15 +28,11 @@ function sanitizeNameSegment(name) {
   return base || "未命名";
 }
 
-function buildSlug(meta, nameSeg, seq) {
-  return `${meta.slugPrefix}-${String(seq).padStart(4, "0")}-${nameSeg}`
-    .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fff-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+function buildSlug(meta, seq) {
+  return `${meta.slugPrefix}-${String(seq).padStart(3, "0")}`;
 }
 
-/** Max sequence for a scenario; supports new and legacy template_code formats. */
+/** Max sequence for a scenario; supports new (3-digit) and legacy (4-digit / name-suffixed) formats. */
 function maxSeqForScenario(db, scenarioCode) {
   const like = `TPL-${scenarioCode.replace(/[%_]/g, "\\$&")}-%`;
   const rows = db
@@ -44,16 +40,10 @@ function maxSeqForScenario(db, scenarioCode) {
     .all(like);
 
   let max = 0;
-  const newRe = new RegExp(`^TPL-${scenarioCode}-(\\d{4})-`);
-  const oldRe = new RegExp(`^TPL-${scenarioCode}-.+-(\\d{4})$`);
+  const re = new RegExp(`^TPL-${scenarioCode}-(\\d+)(?:-|$)`);
 
   for (const { template_code: tc } of rows) {
-    let m = tc.match(newRe);
-    if (m) {
-      max = Math.max(max, parseInt(m[1], 10));
-      continue;
-    }
-    m = tc.match(oldRe);
+    const m = tc.match(re);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   }
   return max;
@@ -71,7 +61,7 @@ function resolveScenarioMeta(db, scenarioName) {
 }
 
 /**
- * Template code: TPL-{场景编号}-{4位顺序号}-{文件名}
+ * Template code: TPL-{场景编号}-{3位顺序号}（模板编号规范 v1.3，不带文件名段）
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {string} scenario
  * @param {string} nameFromSkp
@@ -90,8 +80,8 @@ function nextTemplateCode(db, scenario, nameFromSkp) {
   let templateCode;
   let slug;
   for (;;) {
-    templateCode = `TPL-${meta.code}-${String(seq).padStart(4, "0")}-${nameSeg}`;
-    slug = buildSlug(meta, nameSeg, seq);
+    templateCode = `TPL-${meta.code}-${String(seq).padStart(3, "0")}`;
+    slug = buildSlug(meta, seq);
     if (!existsStmt.get(templateCode, slug)) break;
     seq += 1;
   }
