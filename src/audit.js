@@ -59,14 +59,13 @@ function escapeXml(s) {
 }
 
 function generateAuditSvg({ template, checklist, auditor, auditNote, passedAt }) {
-  const itemCount = AUDIT_CHECKLIST.length;
-  const height = 240 + itemCount * 26 + (auditNote ? 28 : 0);
   let y = 220;
   const itemTexts = AUDIT_CHECKLIST.map((item) => {
     const checked = checklist[item.id] ? "✓" : "✗";
     y += 26;
     return `<text x="40" y="${y}" class="item">${checked} ${escapeXml(item.label)}</text>`;
   }).join("\n  ");
+  const height = y + (auditNote ? 94 : 68);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="${height}" viewBox="0 0 800 ${height}">
@@ -83,8 +82,9 @@ function generateAuditSvg({ template, checklist, auditor, auditNote, passedAt })
   <text x="40" y="78" class="meta">模板编号：${escapeXml(template.template_code)}</text>
   <text x="40" y="102" class="meta">名称：${escapeXml(template.name)} · 场景：${escapeXml(template.scenario)}</text>
   <text x="40" y="126" class="meta">负责人：${escapeXml(template.assignee || "—")} · 审核人：${escapeXml(auditor)}</text>
-  <text x="40" y="150" class="meta">通过时间：${escapeXml(passedAt)} · 参考价：${template.price_min ?? "—"} – ${template.price_max ?? "—"}</text>
-  <text x="40" y="182" class="section">审核清单</text>
+  <text x="40" y="150" class="meta">通过时间：${escapeXml(passedAt)} · 整包价含税：${template.package_price ?? "—"}</text>
+  <text x="40" y="174" class="meta">价格基准日：${escapeXml(template.price_basis_date || "—")} · 安装工时：${template.installation_hours ?? "—"} 人·h</text>
+  <text x="40" y="198" class="section">审核清单</text>
   ${itemTexts}
   <text x="40" y="${y + 36}" class="pass">结论：通过</text>
   ${auditNote ? `<text x="40" y="${y + 62}" class="meta">备注：${escapeXml(auditNote)}</text>` : ""}
@@ -106,13 +106,20 @@ function saveAuditArchive({ template, checklist, auditor, auditNote }) {
   );
 
   const audit_image_rel = relFromUploads(absPath);
+  const deliverySummary = [
+    `整包价含税=${template.package_price ?? "—"}`,
+    `价格基准日=${template.price_basis_date || "—"}`,
+    `安装工时=${template.installation_hours ?? "—"}人·h`,
+    `交付文件=${Array.isArray(template.delivery_file_list) ? template.delivery_file_list.length : 0}项`,
+    `EFF/RND合并=${template.eff_rnd_merged ? "是" : "否"}`
+  ].join("；");
   appendAuditRecord({
     template_code: template.template_code,
     name: template.name,
     scenario: template.scenario,
     passed_at: passedAt,
     auditor,
-    audit_note: auditNote || "",
+    audit_note: [auditNote || "", deliverySummary].filter(Boolean).join("\n"),
     price_min: template.price_min,
     price_max: template.price_max,
     audit_image_rel,
@@ -122,4 +129,4 @@ function saveAuditArchive({ template, checklist, auditor, auditNote }) {
   return { passedAt, audit_image_rel, filename };
 }
 
-module.exports = { saveAuditArchive, AUDIT_CHECKLIST };
+module.exports = { saveAuditArchive, generateAuditSvg, AUDIT_CHECKLIST };

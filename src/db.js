@@ -18,6 +18,7 @@ const { migratePanelMultiColor } = require("./panel-price-colors");
 const { getCustomItem, enrichBomLine } = require("./price-custom");
 const { initTagsSchema, migrateTagsFromTemplates } = require("./tags");
 const { TAGS } = require("./constants");
+const { listDeliveryAssets, listVisualAssets, normalizeDeliveryFileList } = require("./delivery");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DB_PATH = path.join(DATA_DIR, "catalog.db");
@@ -230,6 +231,26 @@ function initSchema(db) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS template_delivery_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('dwg', 'pdf', 'bom', 'man', 'inf')),
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS template_visual_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('effect', 'render')),
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_templates_status ON templates(status);
     CREATE INDEX IF NOT EXISTS idx_templates_scenario ON templates(scenario);
     CREATE INDEX IF NOT EXISTS idx_bom_template ON bom_lines(template_id);
@@ -260,6 +281,13 @@ function initSchema(db) {
   ensureColumn(db, "templates", "photo_images", "TEXT DEFAULT '[]'");
   ensureColumn(db, "templates", "effect_images", "TEXT DEFAULT '[]'");
   ensureColumn(db, "templates", "render_images", "TEXT DEFAULT '[]'");
+  ensureColumn(db, "templates", "package_price", "REAL");
+  ensureColumn(db, "templates", "price_basis_date", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "installation_hours", "REAL");
+  ensureColumn(db, "templates", "delivery_file_list", "TEXT DEFAULT '[]'");
+  ensureColumn(db, "templates", "eff_rnd_merged", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "templates", "delivery_note", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "skp_delivery_name", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "skin_upgrade_enabled", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "templates", "cover_source", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "last_audit_note", "TEXT DEFAULT ''");
@@ -336,6 +364,8 @@ function initSchema(db) {
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE INDEX IF NOT EXISTS idx_delivery_assets_template ON template_delivery_assets(template_id);
+    CREATE INDEX IF NOT EXISTS idx_visual_assets_template ON template_visual_assets(template_id);
     CREATE INDEX IF NOT EXISTS idx_scenario_images_scenario ON scenario_images(scenario_id);
     CREATE INDEX IF NOT EXISTS idx_scenario_markers_image ON scenario_markers(scenario_image_id);
     CREATE INDEX IF NOT EXISTS idx_scenario_markers_template ON scenario_markers(template_id);
@@ -479,6 +509,8 @@ function mapTemplate(row, quoteSummary) {
     photo_images: parseJsonField(row.photo_images, []),
     effect_images: parseJsonField(row.effect_images, []),
     render_images: parseJsonField(row.render_images, []),
+    delivery_file_list: normalizeDeliveryFileList(row.delivery_file_list),
+    eff_rnd_merged: !!row.eff_rnd_merged,
     skin_upgrade_enabled: !!row.skin_upgrade_enabled,
     material_cost: summary.materialCost,
     internal_cost: summary.internalCost ?? 0,
@@ -553,7 +585,9 @@ function getTemplate(db, id) {
     quote_nuts: quote.nutLines,
     quote_hardware: quote.hardwareLines,
     quote_panels: quote.panelLines,
-    bom: quote.legacyLines
+    bom: quote.legacyLines,
+    delivery_assets: listDeliveryAssets(db, id),
+    visual_assets: listVisualAssets(db, id)
   };
 }
 
@@ -569,6 +603,7 @@ module.exports = {
   DB_PATH,
   UPLOADS_DIR,
   getDb,
+  initSchema,
   listTemplates,
   getTemplate,
   getBomLines,

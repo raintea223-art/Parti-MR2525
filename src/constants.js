@@ -36,22 +36,46 @@ const STATUS_FLOW = {
 
 const IMAGE_KINDS = {
   photo: { folder: "实拍照片", label: "实拍照片", required: false },
-  effect: { folder: "效果图", label: "效果图", required: true },
-  render: { folder: "渲染图", label: "渲染图", required: true }
+  effect: { folder: "效果图", label: "效果图", required: false },
+  render: { folder: "渲染图", label: "渲染图", required: false }
 };
+
+const DELIVERY_FILE_KINDS = {
+  dwg: { folder: "加工图纸", label: "DWG 加工图", typeCode: "DWG", extensions: [".dwg"], accept: ".dwg" },
+  pdf: { folder: "加工图PDF", label: "PDF 加工图", typeCode: "PDF", extensions: [".pdf"], accept: ".pdf" },
+  bom: { folder: "BOM表", label: "BOM 表", typeCode: "BOM", extensions: [".xlsx"], accept: ".xlsx" },
+  man: { folder: "交付说明书", label: "交付说明书", typeCode: "MAN", extensions: [".pdf"], accept: ".pdf" },
+  inf: { folder: "基本信息", label: "项目基本信息", typeCode: "INF", extensions: [".xlsx"], accept: ".xlsx" }
+};
+
+const SCENARIO_CLASSIFICATION_RULES = [
+  { order: 1, condition: "同一场地有 ≥3 个独立售卖 / 展示单元聚集", code: "MKT", target: "市集" },
+  { order: 2, condition: "存在餐饮出品行为，含后厨、吧台出品、现制饮品", code: "FNB", target: "轻餐饮" },
+  { order: 3, condition: "部署在室外 / 公园 / 街区且可短期拆装", code: "PRK", target: "公园商业" },
+  { order: 4, condition: "固定经营场所、有交易行为", code: "RET", target: "零售" },
+  { order: 5, condition: "有明确起止日期、为单次展会搭建，对外参展", code: "EXH", target: "会展" },
+  { order: 6, condition: "有明确起止日期、品牌自办活动", code: "EVT", target: "活动" },
+  { order: 7, condition: "长期陈列、不售卖", code: "SHW", target: "展厅" },
+  { order: 8, condition: "以工位、会议、协作为主", code: "OFF", target: "办公" },
+  { order: 9, condition: "以宠物行为界面为主要设计约束", code: "PET", target: "宠物" },
+  { order: 10, condition: "以上皆不成立", code: "OTH", target: "其他" }
+];
 
 const AUDIT_CHECKLIST = [
   { id: "code_name_scenario", label: "模板编号、名称、应用场景" },
   { id: "assignee", label: "负责人已记录" },
   { id: "dimensions", label: "宽 × 深 × 高（mm）" },
   { id: "cover", label: "封面已自动/手动选取" },
-  { id: "effect_images", label: "效果图 ≥ 1 张" },
-  { id: "render_images", label: "渲染图 ≥ 1 张" },
+  { id: "visual_assets", label: "EFF / RND 至少一类；合并已留痕" },
   { id: "skp", label: "skp 已上传且路径正确" },
+  { id: "delivery_package", label: "八类件齐备，文件名符合规范" },
   { id: "structure_bom", label: "结构 BOM 与 skp 一致" },
   { id: "panel_bom", label: "板材 BOM 完整（多行已分行）" },
   { id: "panel_colors", label: "每行标配颜色已填" },
   { id: "quote_note", label: "报价口径已写" },
+  { id: "package_price", label: "整包价含税与价格基准日已填" },
+  { id: "installation_hours", label: "安装工时为人·h 总量" },
+  { id: "delivery_file_list", label: "交付文件清单与交付包一致" },
   { id: "one_liner", label: "一句话卖点已写" },
   { id: "reference_price", label: "参考价百位正确" },
   { id: "skin_upgrade", label: "可定制开关状态正确" }
@@ -99,6 +123,8 @@ module.exports = {
   STATUS_LABELS,
   STATUS_FLOW,
   IMAGE_KINDS,
+  DELIVERY_FILE_KINDS,
+  SCENARIO_CLASSIFICATION_RULES,
   AUDIT_CHECKLIST,
   BOM_CATEGORIES,
   CUSTOM_BOM_CATEGORIES,

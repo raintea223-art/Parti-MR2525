@@ -1,6 +1,6 @@
 # MR2525 方案模板库 — 系统架构
 
-> 版本：基于代码库 2026-06 快照  
+> 版本：基于代码库 2026-11-02 快照
 > 适用对象：开发维护、部署运维、二次集成
 
 ---
@@ -11,11 +11,11 @@
 
 | 能力域 | 说明 |
 |--------|------|
-| 模板录入 | 上传 `.skp`，自动生成 `TPL-{场景}-{序号}-{文件名}` 编号与 slug |
-| 协作工作流 | 草稿 → 待清单深化 → 待审核 → 已发布 → 已下架，状态机约束推进 |
+| 模板录入 | 上传 `.skp`，按判归 10 条选择场景，自动生成 `TPL-{场景}-{序号}` 编号与 slug |
+| 协作工作流 | 草稿 → 待清单深化 → 待审核 → 已发布 → 已下架；提交审核与发布均执行八类件准入校验 |
 | BOM 与报价 | 型材 / 六通 / 五金 / 板材 / 非标件分项清单，自动计算参考价区间 |
 | 场景与标签 | 场景库可视化标记、标签字云、多标签交集筛选 |
-| 对外输出 | 模板图册 PNG、方案手册 PDF（脱敏）、内部清单 CSV、飞书 CSV 导出 |
+| 对外输出 | 模板图册 PNG、方案手册 PDF（脱敏，整包价含税 + 基准日）、内部清单 CSV、飞书 CSV 导出 |
 
 **设计原则：**
 
@@ -37,7 +37,7 @@ flowchart TB
     Router["server.js<br/>REST API 路由层"]
     Auth["auth.js<br/>会话与 RBAC"]
     Guard["template-guard.js<br/>已发布只读守卫"]
-    Domain["领域模块<br/>db / pricing / tags / scenarios …"]
+    Domain["领域模块<br/>db / delivery / pricing / tags / scenarios …"]
     Export["public-sheet.js<br/>gallery-export.js<br/>scenario-handbook.js"]
   end
 
@@ -84,7 +84,8 @@ mr2525-template-catalog/
 │   ├── server.js           # 入口：路由注册、中间件、启动
 │   ├── db.js               # SQLite 初始化、Schema 迁移、模板 CRUD 聚合
 │   ├── auth.js             # 用户、会话 Cookie、RBAC
-│   ├── constants.js        # 场景、状态机、审核清单、业务常量
+│   ├── constants.js        # 场景、判归规则、状态机、审核清单、交付类型
+│   ├── delivery.js         # 八类件文件命名、交付附件与发布准入校验
 │   ├── id.js               # 模板编号 / slug 生成
 │   ├── version.js          # 版本号 bump（v1.0 → v1.1 / v2.0）
 │   ├── template-guard.js   # 已发布模板编辑限制
@@ -99,6 +100,8 @@ mr2525-template-catalog/
 │   ├── tags.js             # 标签 CRUD、字云、模板关联
 │   ├── scenarios.js        # 场景库、图片、标记
 │   ├── audit.js            # 审核通过存档（SVG + CSV）
+│   ├── deepening-form.js   # 外包深化表单导出 / 导入
+│   ├── version-log.js      # 发布版本快照与字段差异
 │   ├── public-sheet.js     # 对外方案手册 HTML/PDF
 │   ├── gallery-export.js   # 内部清单 CSV
 │   └── scenario-handbook.js# 场景手册 PDF
@@ -180,6 +183,8 @@ erDiagram
   templates ||--o{ quote_panels : has
   templates ||--o{ bom_lines : has
   templates ||--o{ template_tags : tagged
+  templates ||--o{ template_delivery_assets : has
+  templates ||--o{ template_visual_assets : has
   tags ||--o{ template_tags : used_by
 
   price_items ||--o{ quote_nuts : references
@@ -203,6 +208,32 @@ erDiagram
     json photo_images
     json effect_images
     json render_images
+    decimal package_price
+    date price_basis_date
+    decimal installation_hours
+    json delivery_file_list
+    bool eff_rnd_merged
+    string delivery_note
+  }
+
+  template_delivery_assets {
+    int id PK
+    int template_id FK
+    string kind
+    string file_name
+    string file_path
+    string uploaded_by
+    datetime created_at
+  }
+
+  template_visual_assets {
+    int id PK
+    int template_id FK
+    string kind
+    string file_name
+    string file_path
+    string uploaded_by
+    datetime created_at
   }
 
   scenarios {
@@ -222,10 +253,18 @@ erDiagram
 | 标识 | `template_code`, `slug`, `name`, `scenario` | 编号规则见 §5.1 |
 | 元信息 | `assignee`, `one_liner`, `quote_note`, `version` | 协作与对外文案 |
 | 尺寸 | `width_mm`, `depth_mm`, `height_mm` | 毫米 |
-| 媒体 | `cover_image`, `cover_source`, `*_images` (JSON) | 封面来源 `photo:N` / `effect:N` |
-| 报价 | `price_override_min/max`, `skin_upgrade_enabled`, `process_fee` | 可覆盖自动计算 |
+| 媒体 | `cover_image`, `cover_source`, `*_images` (JSON) | 封面来源 `photo:N` / `effect:N` / `render:N` |
+| 报价 | `price_override_min/max`, `skin_upgrade_enabled`, `process_fee` | 内部参考价，可覆盖自动计算 |
+| 交付与发布 | `package_price`, `price_basis_date`, `installation_hours` | 整包价含税、价格基准日、人·h 总量 |
+| 交付清单 | `delivery_file_list`, `eff_rnd_merged`, `delivery_note`, `skp_delivery_name` | 文件名全称清单、EFF/RND 合并留痕与 SKP 交付文件名 |
 | 工作流 | `status`, `published_at`, `last_audit_*` | 状态机 |
 | 遗留 | `panel_note`, `inquiry_form_url` | 只读展示，新模板不再编辑 |
+
+#### template_delivery_assets（交付附件）
+
+按模板保存 DWG / PDF / BOM / MAN / INF 五类附件，记录类别、原始交付文件名、系统内部路径、上传人与时间。`kind` 由 CHECK 约束限制，模板删除时级联删除。原始交付文件名用于六段定式与交付清单校验，系统内部路径用于鉴权下载。
+
+`template_visual_assets` 以同样方式登记 EFF / RND 图片的原始交付文件名和实际上传路径。发布校验同时核对物理文件、模板目录边界、扩展名、附件类型码及清单双向映射；历史图片没有登记时须重新上传，不自动伪造映射。
 
 #### 报价明细表（按模板 FK，CASCADE 删除）
 
@@ -283,7 +322,12 @@ data/uploads/
 │   ├── {TPL-XX-0001-名称}.skp
 │   ├── 实拍照片/
 │   ├── 效果图/
-│   └── 渲染图/
+│   ├── 渲染图/
+│   ├── 加工图纸/             # DWG
+│   ├── 加工图PDF/            # PDF
+│   ├── BOM表/                # XLSX
+│   ├── 交付说明书/           # MAN，PDF
+│   └── 基本信息/             # INF，XLSX
 ├── scenarios/
 │   └── {场景代码}/              # 如 ZT、LS
 │       ├── 封面/
@@ -296,7 +340,7 @@ data/uploads/
 └── _staging/                    # skp 注册前临时目录
 ```
 
-公开 URL 规则：`/uploads/{相对路径}`，由 Express 静态托管。
+URL 规则：`/uploads/{相对路径}`。图片等既有静态资源沿用原访问方式；DWG / PDF / BOM / MAN / INF 交付附件目录在静态托管前执行登录校验，路径判断先解码并统一正反斜杠，避免 INF 等内部资料通过 Windows 路径形式公开下载。
 
 ---
 
@@ -304,15 +348,16 @@ data/uploads/
 
 ### 5.1 模板编号（id.js）
 
-**格式：** `TPL-{场景2字母代码}-{4位序号}-{文件名段}`
+**格式：** `TPL-{场景3字母代码}-{3位序号}`
 
 ```
-示例：TPL-ZT-0001-L型展架
-slug：zhanting-0001-l型展架
+示例：TPL-SHW-001
+slug：zhanting-001
 ```
 
-- 序号：同场景全局递增，兼容旧版 `TPL-场景-文件名-序号` 格式
-- 文件名：来自 skp  basename，过滤非法字符，最多 40 字
+- 序号：同场景全局递增，兼容历史编号计数
+- 模板名称：独立取自 skp basename，不进入模板编号
+- 场景判归：`constants.js` 统一维护 10 条规则，`/api/meta` 下发新建页，按顺序命中即停
 - 中文文件名：优先客户端 `skpBaseName`，否则 latin1→utf8 解码
 
 ### 5.2 工作流状态机（constants.js + template-guard.js）
@@ -328,6 +373,9 @@ stateDiagram-v2
   archived --> pending_review: 重新提交审核
 ```
 
+- SKP 上传先写入同目录唯一暂存文件，保留旧模型备份；数据库提交后替换正式文件，失败时恢复旧模型
+- SKP 登记 `skp_delivery_name`，发布时与清单中的唯一 SKP 文件名核对
+
 **已发布约束（template-guard.js）：**
 
 - 除 **标签** 外所有字段不可 PATCH
@@ -335,13 +383,21 @@ stateDiagram-v2
 - 下架后编辑 → 再审核 → 版本 `bumpMinor`（+0.1）
 - 更换 skp → `bumpMajor`（主版本 +1）
 
+**发布准入（delivery.js + server.js）：**
+
+- `pending_quote/archived → pending_review` 与 `audit/approve` 两个入口均调用 `validatePublishReadiness()`
+- 校验整包价、真实有效的基准日、人·h 总量、交付文件清单、六段定式、EFF/RND 组合规则、SKP 与五类实际附件
+- 只有 EFF 而无 RND 时必须勾选合并并填写交付备注；渲染图可单独作为封面候选
+
 **审核通过（audit.js）：**
 
-- 校验 `AUDIT_CHECKLIST` 15 项
+- 复核实际发布准入后，再校验 `AUDIT_CHECKLIST` 17 项
 - 生成 SVG 审核单 → `data/uploads/审核存档/`
-- 追加 `审核记录.csv`
+- 追加 `审核记录.csv`；新交付字段以结构化摘要写入既有审核备注列，保持历史 CSV 表头兼容
 
 ### 5.3 报价引擎（pricing.js）
+
+内部参考价与对外整包价分离：以下计算结果用于内部 BOM 算价和列表；客户侧图册与方案手册读取 `package_price` 与 `price_basis_date`。
 
 **计算流水线：**
 
@@ -418,7 +474,7 @@ price_min/max = override 或 computed
 |------|------|------|------|
 | `public-sheet.js` | HTML / PDF 方案手册 | 对外（BOM 脱敏） | Puppeteer 16:9 |
 | `gallery-export.js` | 内部清单 CSV | 生产/采购 | 含对内/对外价、供应商 |
-| `server.js` export | 飞书主表/BOM CSV | 飞书导入 | 流式 CSV |
+| `server.js` export | 飞书主表/BOM CSV | 飞书导入 | 主表新增整包价、基准日、工时、交付清单与合并留痕 |
 | 前端 `html2canvas` | 展示图 PNG | 对外宣传 | 浏览器端 |
 
 ---
@@ -439,7 +495,7 @@ price_min/max = override 或 computed
 
 #### 元数据
 
-| GET | `/api/meta` | 场景、状态、审核清单、单价库分类、当前用户等 |
+| GET | `/api/meta` | 场景、判归 10 条、交付附件类型、状态、17 项审核清单、当前用户等 |
 
 #### 模板 `/api/templates/*`
 
@@ -449,7 +505,9 @@ price_min/max = override 或 computed
 | POST | `/register` | skp 注册新建 |
 | PATCH | `/:id` | 更新基本信息、状态、标签 |
 | DELETE | `/:id` | 删除（admin） |
-| POST | `/:id/upload/:kind` | skp / photo / effect / render |
+| POST | `/:id/upload/:kind` | skp / photo / effect / render / dwg / pdf / bom / man / inf |
+| DELETE | `/:id/visual-assets` | 删除图片并同步封面；支持清理历史未登记图片 |
+| DELETE | `/api/delivery-assets/:assetId` | 删除交付附件；已发布只读守卫 + 模板目录限制 |
 | POST | `/:id/{profiles,nuts,hardware,panels,bom}` | 报价行 CRUD |
 | POST | `/:id/audit/{approve,reject}` | 审核 |
 | GET | `/:id/public-sheet.{html,pdf}` | 方案手册 |
@@ -487,9 +545,13 @@ sequenceDiagram
   S-->>U: 201 { id, template_code, slug }
   U->>S: PATCH /api/templates/:id (尺寸/文案/标签)
   U->>S: POST .../profiles, /nuts, /hardware, /panels
-  U->>S: POST .../upload/effect, /upload/render
+  U->>S: POST .../upload/effect 或 /upload/render
+  U->>S: POST .../upload/{dwg,pdf,bom,man,inf}
+  U->>S: PATCH 整包价 / 基准日 / 工时 / 交付清单 / 合并留痕
   U->>S: PATCH status → pending_review
+  S->>S: validatePublishReadiness()
   U->>S: POST .../audit/approve (checklist)
+  S->>S: 再次 validatePublishReadiness()
   S->>D: status=published, published_at, version
   S-->>U: 审核存档路径
 ```
@@ -525,7 +587,7 @@ sequenceDiagram
 - 统一 `api(path, options)` 封装，`credentials: 'include'`
 - 启动时 `GET /api/meta` 加载全局字典
 - 权限 UI：`canWrite()`, `canManagePrices()`, `canExport()` 等镜像后端 RBAC
-- 版本戳：`index.html` 中 `UI 20260529b`、`styles.css?v=` 防缓存
+- 版本戳：`index.html` 中 `UI 20261102a`、`styles.css?v=` 与 `app.js?v=` 防缓存
 
 ---
 
@@ -607,6 +669,7 @@ services:
 ```mermaid
 flowchart LR
   server.js --> db.js
+  server.js --> delivery.js
   server.js --> auth.js
   server.js --> template-guard.js
   server.js --> id.js
@@ -624,7 +687,11 @@ flowchart LR
   server.js --> gallery-export.js
   server.js --> scenario-handbook.js
   server.js --> version.js
+  server.js --> version-log.js
+  server.js --> deepening-form.js
   server.js --> constants.js
+  delivery.js --> constants.js
+  db.js --> delivery.js
 
   db.js --> pricing.js
   db.js --> price-items.js
@@ -651,7 +718,8 @@ flowchart LR
 | 会话 | HMAC 签名 Cookie | 生产设置强 `SESSION_SECRET` |
 | 上传 | 扩展名 / MIME 校验 | skp 200MB 限流 |
 | SQL | 预编译语句 | 已采用 prepared statements |
-| 权限 | RBAC 中间件 | 已发布模板服务端强制只读 |
+| 权限 | RBAC 中间件 | 已发布模板服务端强制只读；交付附件目录登录后下载 |
+| 发布 | 服务端准入校验 | 提交审核与审核发布双入口校验，不能仅靠前端必填或人工勾选 |
 | PDF | 本地 Chromium | Docker 隔离 |
 
 ---

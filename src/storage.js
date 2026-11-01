@@ -43,26 +43,29 @@ function listImageFiles(dir) {
   return fs
     .readdirSync(dir)
     .filter((f) => !f.startsWith("."))
+    .filter((f) => [".jpg", ".jpeg", ".png", ".webp"].includes(path.extname(f).toLowerCase()))
     .sort()
     .map((f) => toPublicUrl(path.join(relFromUploads(dir), f)));
 }
 
 function parseCoverSource(coverSource) {
   if (!coverSource) return null;
-  const m = String(coverSource).match(/^(photo|effect):(\d+)$/);
+  const m = String(coverSource).match(/^(photo|effect|render):(\d+)$/);
   if (!m) return null;
   return { kind: m[1], index: Number(m[2]) };
 }
 
-function resolveCover({ photo_images = [], effect_images = [], cover_source = null, cover_image = null }) {
+function resolveCover({ photo_images = [], effect_images = [], render_images = [], cover_source = null, cover_image = null }) {
   const parsed = parseCoverSource(cover_source);
   if (parsed) {
-    const list = parsed.kind === "photo" ? photo_images : effect_images;
+    const lists = { photo: photo_images, effect: effect_images, render: render_images };
+    const list = lists[parsed.kind] || [];
     if (list[parsed.index]) return list[parsed.index];
   }
   if (cover_image) return cover_image;
   if (photo_images.length) return photo_images[0];
   if (effect_images.length) return effect_images[0];
+  if (render_images.length) return render_images[0];
   return null;
 }
 
@@ -79,6 +82,7 @@ function syncTemplateImages(db, templateRow) {
   const cover_image = resolveCover({
     photo_images,
     effect_images,
+    render_images,
     cover_source: templateRow.cover_source,
     cover_image: templateRow.cover_image
   });

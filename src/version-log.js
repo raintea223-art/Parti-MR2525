@@ -11,6 +11,15 @@ const FIELD_LABELS = {
   height_mm: "高度 mm",
   price_override_min: "参考价下限",
   price_override_max: "参考价上限",
+  package_price: "整包价含税",
+  price_basis_date: "价格基准日",
+  installation_hours: "安装工时",
+  delivery_file_list: "交付文件清单",
+  eff_rnd_merged: "EFF/RND 合并",
+  delivery_note: "交付备注",
+  delivery_assets: "交付附件",
+  visual_assets: "EFF/RND 图片文件",
+  skp_delivery_name: "SKP 交付文件名",
   skin_upgrade_enabled: "可定制",
   cover_image: "封面",
   cover_source: "封面来源",
@@ -163,6 +172,23 @@ function buildSnapshot(template) {
       height_mm: template.height_mm ?? null,
       price_override_min: template.price_override_min ?? null,
       price_override_max: template.price_override_max ?? null,
+      package_price: template.package_price ?? null,
+      price_basis_date: template.price_basis_date || "",
+      installation_hours: template.installation_hours ?? null,
+      delivery_file_list: [...(template.delivery_file_list || [])],
+      eff_rnd_merged: !!template.eff_rnd_merged,
+      delivery_note: template.delivery_note || "",
+      delivery_assets: (template.delivery_assets || []).map((asset) => ({
+        kind: asset.kind,
+        file_name: asset.file_name,
+        file_path: asset.file_path
+      })),
+      visual_assets: (template.visual_assets || []).map((asset) => ({
+        kind: asset.kind,
+        file_name: asset.file_name,
+        file_path: asset.file_path
+      })),
+      skp_delivery_name: template.skp_delivery_name || "",
       skin_upgrade_enabled: !!template.skin_upgrade_enabled,
       cover_image: template.cover_image || "",
       cover_source: template.cover_source || "",
@@ -222,7 +248,9 @@ function diffImages(prevTpl, currTpl) {
   for (const [key, field, label] of kinds) {
     const from = (prevTpl?.[field] || []).length;
     const to = (currTpl?.[field] || []).length;
-    if (from !== to) out[key] = { label, from, to };
+    if (stableJson(prevTpl?.[field] || []) !== stableJson(currTpl?.[field] || [])) {
+      out[key] = { label, from, to };
+    }
   }
   return out;
 }
@@ -300,6 +328,17 @@ function countQuoteLines(quote) {
   };
 }
 
+function formatFieldValue(key, value) {
+  if (value == null || value === "") return "—";
+  if ((key === "delivery_assets" || key === "visual_assets") && Array.isArray(value)) {
+    if (!value.length) return "—";
+    return value.map((asset) => `${asset.kind}:${asset.file_name}`).join("、");
+  }
+  if (Array.isArray(value)) return value.length ? value.join("、") : "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 function buildSummary({ changes, trigger, version, previousVersion, auditor, auditNote, template }) {
   const lines = [];
   const triggerLabel = TRIGGER_LABELS[trigger] || trigger;
@@ -322,7 +361,7 @@ function buildSummary({ changes, trigger, version, previousVersion, auditor, aud
     lines.push(`- 参考价：${fmtMoney(changes.totals?.price_min)} – ${fmtMoney(changes.totals?.price_max)}`);
   } else {
     for (const field of changes.fields || []) {
-      lines.push(`- ${field.label}：${field.from ?? "—"} → ${field.to ?? "—"}`);
+      lines.push(`- ${field.label}：${formatFieldValue(field.key, field.from)} → ${formatFieldValue(field.key, field.to)}`);
     }
     const tagDiff = changes.tags || {};
     if ((tagDiff.added || []).length || (tagDiff.removed || []).length) {

@@ -183,6 +183,11 @@ function fmtMoney(n) {
   return "¥" + Number(n).toLocaleString("zh-CN", { maximumFractionDigits: 0 });
 }
 
+function fmtPackagePrice(t) {
+  const price = fmtMoney(t.package_price);
+  return t.price_basis_date ? `${price}（含税 · ${t.price_basis_date}）` : `${price}（含税）`;
+}
+
 let workflowMermaidReady = false;
 
 function switchView(name) {
@@ -239,7 +244,7 @@ function renderWorkflowPage() {
   const role = currentUser?.role || "viewer";
   const roleTips = {
     admin: "维护单价库与用户；可审核、下架与重新上架。",
-    editor: "新建模板、补全 BOM 与图片、提交审核；可导出 CSV。",
+    editor: "新建模板、补齐八类件与 BOM、填写交付发布信息、提交审核；可导出 CSV。",
     viewer: "浏览列表、详情、图册与场景库；不可改价与编辑。"
   };
 
@@ -255,15 +260,16 @@ function renderWorkflowPage() {
         <h3>录入员</h3>
         <ol>
           <li><strong>新建模板</strong> → 上传 skp → 选场景</li>
-          <li>详情：图片、尺寸、<strong>详细报价清单</strong>、标签</li>
-          <li>保存基本信息 → <strong>→ 待审核</strong></li>
+          <li>详情：八类件、尺寸、<strong>详细报价清单</strong>、标签</li>
+          <li>填写整包价、基准日、安装工时与交付文件清单</li>
+          <li>保存后提交，系统校验通过 → <strong>待审核</strong></li>
         </ol>
       </div>
       <div class="card workflow-role-card">
         <h3>审核员</h3>
         <ol>
           <li>打开模板 <strong>审核页</strong></li>
-          <li>勾选 checklist（与 skp/BOM 一致）</li>
+          <li>确认系统发布准入复核通过，再勾选 checklist</li>
           <li><strong>通过并发布</strong> 或退回待清单深化</li>
         </ol>
       </div>
@@ -272,7 +278,7 @@ function renderWorkflowPage() {
         <ol>
           <li>已发布后 <strong>导出主表 CSV</strong> → 飞书</li>
           <li>分享 <strong>画册视图</strong> 链接给客户</li>
-          <li>客户询单后出正式报价（≠参考价）</li>
+          <li>客户询单后按整包价与基准日出正式报价</li>
         </ol>
       </div>
     </div>
@@ -283,8 +289,8 @@ function renderWorkflowPage() {
       <table class="workflow-status-table">
         <thead><tr><th>状态</th><th>说明</th></tr></thead>
         <tbody>
-          <tr><td><span class="badge pending_quote">待清单深化</span></td><td>补全图片、尺寸、报价清单、标签</td></tr>
-          <tr><td><span class="badge pending_review">待审核</span></td><td>审核页 checklist → 通过并发布</td></tr>
+          <tr><td><span class="badge pending_quote">待清单深化</span></td><td>补齐八类件、尺寸、BOM 与交付发布必填项</td></tr>
+          <tr><td><span class="badge pending_review">待审核</span></td><td>发布准入复核 + 审核页 checklist → 通过并发布</td></tr>
           <tr><td><span class="badge published">已发布</span></td><td><strong>仅可改标签</strong>；其它须先点 <strong>下架</strong></td></tr>
           <tr><td><span class="badge archived">已下架</span></td><td>可编辑；<strong>重新上架</strong> → 待审核（再发布版本 +0.1）</td></tr>
         </tbody>
@@ -410,10 +416,10 @@ flowchart LR
       <h3>操作步骤（录入 → 审核 → 对外）</h3>
       <ol class="flow-steps">
         <li><strong>登记</strong>：新建模板 → 上传 skp → 选场景 → 系统生成编号（格式 <code>TPL-场景-序号</code>），进入<strong>待清单深化</strong>。</li>
-        <li><strong>深化</strong>：上传实拍（可选）/ 效果图 / 渲染图；填宽×深×高；在报价清单录入型材（含颜色）、六通、五金、板材；<code>#</code> 打标签；填一句话卖点与报价口径；核对参考价 → <strong>→ 待审核</strong>。</li>
-        <li><strong>审核</strong>：审核员在审核页勾选 checklist → <strong>通过并发布</strong>（生成审核单 PNG + 台账 CSV；非首次发布时版本 <strong>+0.1</strong>）或退回。</li>
+        <li><strong>深化</strong>：实拍可选，EFF/RND 至少一类；上传 SKP 与 DWG/PDF/BOM/MAN/INF；填尺寸、BOM、整包价含税、价格基准日、安装工时和交付文件清单。只有 EFF 时勾选合并并填写交付备注，再提交 <strong>→ 待审核</strong>。</li>
+        <li><strong>审核</strong>：系统在提交审核和发布时两次校验八类件与必填项；审核员再勾选 checklist → <strong>通过并发布</strong>（生成审核单 SVG + 台账 CSV；非首次发布时版本 <strong>+0.1</strong>）或退回。</li>
         <li><strong>已发布维护</strong>：仅可改标签并「保存标签」；要改 BOM/图片等须 <strong>下架</strong> → 编辑 → 重新上架 → 再审核。</li>
-        <li><strong>对外</strong>：<strong>模板图册</strong>下载展示图、<strong>方案手册</strong> PDF；有导出权限者可下内部<strong>清单</strong> CSV 并批量打包；<strong>导出主表 CSV</strong> 更新飞书；销售分享画册链接。</li>
+        <li><strong>对外</strong>：模板图册与方案手册展示<strong>整包价含税 + 价格基准日</strong>；有导出权限者可下内部清单 CSV；导出主表 CSV 更新飞书，销售分享画册链接。</li>
       </ol>
     </div>
 
@@ -1231,10 +1237,7 @@ async function runGalleryBatchDownload(kind, items) {
 }
 
 function renderGalleryPoster(t) {
-  const price =
-    t.price_min != null
-      ? `${fmtMoney(t.price_min)}${t.price_max !== t.price_min && t.price_max != null ? " – " + fmtMoney(t.price_max) : ""}`
-      : "—";
+  const price = fmtPackagePrice(t);
   const dims =
     t.width_mm && t.depth_mm && t.height_mm
       ? `${t.width_mm}×${t.depth_mm}×${t.height_mm} mm`
@@ -1544,14 +1547,87 @@ function renderQuoteBreakdown(q) {
     <div class="breakdown-item"><span>其他</span><strong>${fmtMoney(q.legacyAmount)}</strong></div>
     <div class="breakdown-item"><span>物料小计</span><strong>${fmtMoney(q.materialCost)}</strong></div>
     <div class="breakdown-item"><span>加工费 (10%)</span><strong>${fmtMoney(q.processAmount)}</strong></div>
-    <div class="breakdown-item"><span>对外参考价</span><strong>${fmtMoney(q.totalCost)}</strong></div>
+    <div class="breakdown-item"><span>内部算价合计</span><strong>${fmtMoney(q.totalCost)}</strong></div>
     <div class="breakdown-item"><span>对内成本</span><strong>${fmtMoney(q.internalCost)}</strong></div>
   </div>`;
 }
 
-function renderImageGallery(urls) {
+function renderImageGallery(urls, { kind = "", editable = false } = {}) {
   if (!urls?.length) return '<p class="hint">暂无图片</p>';
-  return `<div class="gallery">${urls.map((u) => `<a href="${u}" target="_blank"><img src="${u}" alt="" /></a>`).join("")}</div>`;
+  return `<div class="gallery">${urls
+    .map(
+      (url) => `<div class="visual-asset-item">
+        <a href="${escapeAttr(url)}" target="_blank"><img src="${escapeAttr(url)}" alt="" /></a>
+        ${editable ? `<button type="button" class="btn linkish danger-text visual-asset-delete" data-delete-visual-kind="${escapeAttr(kind)}" data-delete-visual-path="${escapeAttr(url)}">删除</button>` : ""}
+      </div>`
+    )
+    .join("")}</div>`;
+}
+
+function renderDeliveryDropZones() {
+  return Object.entries(meta.deliveryFileKinds || {})
+    .map(
+      ([kind, definition]) => `<div class="drop-zone detail-drop-zone" id="drop-zone-${kind}" tabindex="0" role="button" aria-label="上传${escapeAttr(definition.label)}">
+        <div class="drop-zone-inner">
+          <p class="drop-zone-title">${escapeHtml(definition.label)}</p>
+          <p class="drop-zone-hint">拖拽 ${escapeHtml(definition.accept)} 或 <button type="button" class="drop-zone-link">选择文件</button></p>
+        </div>
+        <input type="file" accept="${escapeAttr(definition.accept)}" multiple hidden />
+      </div>`
+    )
+    .join("");
+}
+
+function renderDeliveryAssetList(t) {
+  const assets = t.delivery_assets || [];
+  if (!assets.length) return '<p class="hint">尚未上传 DWG、PDF、BOM、MAN、INF 附件。</p>';
+  const canDelete = canEditTemplateContent(t);
+  const rows = assets.map((asset) => {
+    const definition = meta.deliveryFileKinds?.[asset.kind];
+    return `<tr>
+      <td>${escapeHtml(definition?.typeCode || asset.kind.toUpperCase())}</td>
+      <td><a href="${escapeAttr(asset.file_path)}" target="_blank">${escapeHtml(asset.file_name)}</a></td>
+      <td>${escapeHtml(asset.uploaded_by || "—")}</td>
+      <td>${canDelete ? `<button type="button" class="btn linkish danger-text" data-delete-delivery="${asset.id}">删除</button>` : ""}</td>
+    </tr>`;
+  });
+  return `<div class="table-wrap"><table class="delivery-asset-table"><thead><tr><th>类型</th><th>交付文件名</th><th>上传人</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+
+function bindDeliveryAssetDeletes(t) {
+  document.querySelectorAll("[data-delete-delivery]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirm("确认删除该交付附件？删除后须重新上传并更新交付文件清单。")) return;
+      try {
+        await api(`/api/delivery-assets/${button.dataset.deleteDelivery}`, { method: "DELETE" });
+        toast("交付附件已删除");
+        await refreshDetailAssets(t.id);
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  });
+}
+
+function bindVisualAssetDeletes(t) {
+  document.querySelectorAll("[data-delete-visual-path]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirm("确认删除该图片？封面将按剩余图片重新选取。")) return;
+      try {
+        await api(`/api/templates/${t.id}/visual-assets`, {
+          method: "DELETE",
+          body: JSON.stringify({
+            kind: button.dataset.deleteVisualKind,
+            file_path: button.dataset.deleteVisualPath
+          })
+        });
+        toast("图片已删除");
+        await refreshDetailAssets(t.id);
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  });
 }
 
 function buildCoverOptions(t) {
@@ -1561,6 +1637,9 @@ function buildCoverOptions(t) {
   });
   (t.effect_images || []).forEach((url, i) => {
     opts.push({ value: `effect:${i}`, label: `效果图 ${i + 1}`, url });
+  });
+  (t.render_images || []).forEach((url, i) => {
+    opts.push({ value: `render:${i}`, label: `渲染图 ${i + 1}`, url });
   });
   return opts;
 }
@@ -1580,7 +1659,7 @@ function resolveCoverSelection(t, preferredValue) {
 function renderCoverSourcePicker(t, preferredValue) {
   const selected = resolveCoverSelection(t, preferredValue);
   if (!selected) {
-    return `<div class="detail-section detail-section--cover full"><span class="detail-section-label">封面来源</span><p class="hint">上传实拍或效果图后可选择封面</p></div>`;
+    return `<div class="detail-section detail-section--cover full"><span class="detail-section-label">封面来源</span><p class="hint">上传实拍、效果图或渲染图后可选择封面</p></div>`;
   }
   const opts = buildCoverOptions(t);
   if (!canEditTemplateContent(t)) {
@@ -1847,7 +1926,8 @@ async function renderDetail(t) {
         <span class="badge ${t.status}">${meta.statusLabels[t.status]}</span>
       </div>
       <div class="summary-row">
-        <div>参考价 <strong>${fmtMoney(t.price_min)} – ${fmtMoney(t.price_max)}</strong></div>
+        <div>整包价 <strong>${fmtPackagePrice(t)}</strong></div>
+        <div>内部参考价 <strong>${fmtMoney(t.price_min)} – ${fmtMoney(t.price_max)}</strong></div>
       </div>
     </div>
 
@@ -1917,6 +1997,29 @@ async function renderDetail(t) {
       <div class="form-actions"><button type="button" class="btn primary" id="save-detail">${isPublishedLocked ? "保存标签" : "保存基本信息"}</button></div>
     </div>
 
+    <div class="card detail-form">
+      <h3>交付与发布</h3>
+      <p class="hint">整包价为对外报价基准。安装工时只填人·h 总量。交付文件清单每行一个文件名，须包含扩展名。</p>
+      <div class="detail-section detail-section--grid3">
+        <label>整包价含税<input id="d-package-price" type="number" min="0" step="0.01" value="${t.package_price ?? ""}" /></label>
+        <label>价格基准日<input id="d-price-basis-date" type="date" value="${escapeAttr(t.price_basis_date || "")}" /></label>
+        <label>安装工时（人·h）<input id="d-installation-hours" type="number" min="0" step="0.5" value="${t.installation_hours ?? ""}" /></label>
+      </div>
+      <div class="detail-section detail-section--full">
+        <label class="field-stacked">交付文件清单<textarea id="d-delivery-file-list" rows="8" placeholder="TPL-SHW-001_DWG_加工图纸_v1.0.dwg">${escapeHtml((t.delivery_file_list || []).join("\n"))}</textarea></label>
+      </div>
+      <div class="detail-section detail-section--full">
+        <label class="checkbox-chip${t.eff_rnd_merged ? " is-checked" : ""}">
+          <input type="checkbox" id="d-eff-rnd-merged" ${t.eff_rnd_merged ? "checked" : ""} />
+          <span class="checkbox-chip-text">RND 已并入 EFF</span>
+        </label>
+      </div>
+      <div class="detail-section detail-section--full">
+        <label class="field-stacked">交付备注 / 缺失件说明<textarea id="d-delivery-note" rows="3" placeholder="合并或缺件时填写，须与 INF 及台账备注一致">${escapeHtml(t.delivery_note || "")}</textarea></label>
+      </div>
+      ${isPublishedLocked ? "" : '<div class="form-actions"><button type="button" class="btn primary" id="save-delivery">保存交付信息</button></div>'}
+    </div>
+
     <div class="card" id="detail-assets-card">
       <h3>文件与图片</h3>
       <p class="hint">资产目录：<code>data/uploads/${escapeHtml(t.template_code)}/</code></p>
@@ -1926,21 +2029,21 @@ async function renderDetail(t) {
             <p class="drop-zone-title">实拍照片</p>
             <p class="drop-zone-hint">拖拽图片或 <button type="button" class="drop-zone-link">选择文件</button></p>
           </div>
-          <input type="file" accept="image/*" multiple hidden />
+          <input type="file" accept=".jpg,.jpeg,.png,.webp" multiple hidden />
         </div>
         <div class="drop-zone detail-drop-zone" id="drop-zone-effect" tabindex="0" role="button" aria-label="上传效果图">
           <div class="drop-zone-inner">
             <p class="drop-zone-title">效果图</p>
             <p class="drop-zone-hint">拖拽图片或 <button type="button" class="drop-zone-link">选择文件</button></p>
           </div>
-          <input type="file" accept="image/*" multiple hidden />
+          <input type="file" accept=".jpg,.png" multiple hidden />
         </div>
         <div class="drop-zone detail-drop-zone" id="drop-zone-render" tabindex="0" role="button" aria-label="上传渲染图">
           <div class="drop-zone-inner">
             <p class="drop-zone-title">渲染图</p>
             <p class="drop-zone-hint">拖拽图片或 <button type="button" class="drop-zone-link">选择文件</button></p>
           </div>
-          <input type="file" accept="image/*" multiple hidden />
+          <input type="file" accept=".jpg,.png" multiple hidden />
         </div>
         <div class="drop-zone detail-drop-zone" id="drop-zone-skp" tabindex="0" role="button" aria-label="更新 skp">
           <div class="drop-zone-inner">
@@ -1950,14 +2053,18 @@ async function renderDetail(t) {
           <input type="file" accept=".skp" hidden />
         </div>
       </div>
+      <h4>交付文件附件</h4>
+      <p class="hint">系统内文件由程序自动命名。EFF/RND/SKP 与五类附件的原始交付文件名须符合六段定式，用于核对交付文件清单。</p>
+      <div class="detail-drop-zones">${renderDeliveryDropZones()}</div>
+      <div id="delivery-asset-list">${renderDeliveryAssetList(t)}</div>
       <div id="detail-cover-info">${t.cover_image ? `<p class="hint">当前封面：<a href="${t.cover_image}" target="_blank"><img src="${t.cover_image}" alt="" class="cover-thumb" /></a></p>` : ""}</div>
       <div id="detail-skp-info">${t.skp_file ? `<p class="hint">skp：<a href="${t.skp_file}" target="_blank">${t.skp_file}</a></p>` : ""}</div>
       <h4>实拍照片（可选）</h4>
-      <div id="detail-photo-gallery">${renderImageGallery(t.photo_images)}</div>
-      <h4>效果图（必填 ≥1）</h4>
-      <div id="detail-effect-gallery">${renderImageGallery(t.effect_images)}</div>
-      <h4>渲染图（必填 ≥1）</h4>
-      <div id="detail-render-gallery">${renderImageGallery(t.render_images)}</div>
+      <div id="detail-photo-gallery">${renderImageGallery(t.photo_images, { kind: "photo", editable: canEditTemplateContent(t) })}</div>
+      <h4>效果图（EFF / RND 至少一类）</h4>
+      <div id="detail-effect-gallery">${renderImageGallery(t.effect_images, { kind: "effect", editable: canEditTemplateContent(t) })}</div>
+      <h4>渲染图（可并入 EFF）</h4>
+      <div id="detail-render-gallery">${renderImageGallery(t.render_images, { kind: "render", editable: canEditTemplateContent(t) })}</div>
     </div>
 
     <div class="card">
@@ -2078,6 +2185,9 @@ async function renderDetail(t) {
   }
 
   document.getElementById("save-detail")?.addEventListener("click", () => saveDetail(t.id, t.status));
+  document.getElementById("save-delivery")?.addEventListener("click", () => saveDetail(t.id, t.status));
+  bindDeliveryAssetDeletes(t);
+  bindVisualAssetDeletes(t);
   bindDetailTagEditor();
   root.querySelectorAll("[data-status]").forEach((btn) => {
     btn.addEventListener("click", () => updateStatus(t.id, btn.dataset.status, t.status));
@@ -2089,6 +2199,9 @@ async function renderDetail(t) {
     initDetailDropZone({ zoneId: "drop-zone-effect", kind: "effect", multiple: true, templateId: t.id });
     initDetailDropZone({ zoneId: "drop-zone-render", kind: "render", multiple: true, templateId: t.id });
     initDetailDropZone({ zoneId: "drop-zone-skp", kind: "skp", multiple: false, templateId: t.id });
+    Object.keys(meta.deliveryFileKinds || {}).forEach((kind) => {
+      initDetailDropZone({ zoneId: `drop-zone-${kind}`, kind, multiple: true, templateId: t.id });
+    });
     bindCoverSourcePicker(t.id);
   }
 
@@ -2105,6 +2218,11 @@ async function renderDetail(t) {
   const skinChip = skinUpgrade?.closest(".checkbox-chip");
   skinUpgrade?.addEventListener("change", () => {
     skinChip?.classList.toggle("is-checked", skinUpgrade.checked);
+  });
+  const effRndMerged = document.getElementById("d-eff-rnd-merged");
+  const effRndChip = effRndMerged?.closest(".checkbox-chip");
+  effRndMerged?.addEventListener("change", () => {
+    effRndChip?.classList.toggle("is-checked", effRndMerged.checked);
   });
 
   const profileForm = document.getElementById("profile-add-form");
@@ -2670,6 +2788,12 @@ async function saveDetail(id, templateStatus) {
       quote_note: document.getElementById("d-quote-note").value,
       price_override_min: numOrNull(document.getElementById("d-price-min").value),
       price_override_max: numOrNull(document.getElementById("d-price-max").value),
+      package_price: numOrNull(document.getElementById("d-package-price").value),
+      price_basis_date: document.getElementById("d-price-basis-date").value,
+      installation_hours: numOrNull(document.getElementById("d-installation-hours").value),
+      delivery_file_list: document.getElementById("d-delivery-file-list").value.split(/\r?\n/),
+      eff_rnd_merged: document.getElementById("d-eff-rnd-merged").checked,
+      delivery_note: document.getElementById("d-delivery-note").value,
       skin_upgrade_enabled: document.getElementById("d-skin-upgrade").checked,
       internal_note: document.getElementById("d-note").value,
       tags: [...detailTemplateTags]
@@ -2790,11 +2914,15 @@ async function refreshDetailAssets(id) {
       : "";
   }
   const photoGal = document.getElementById("detail-photo-gallery");
-  if (photoGal) photoGal.innerHTML = renderImageGallery(t.photo_images);
+  if (photoGal) photoGal.innerHTML = renderImageGallery(t.photo_images, { kind: "photo", editable: canEditTemplateContent(t) });
   const effectGal = document.getElementById("detail-effect-gallery");
-  if (effectGal) effectGal.innerHTML = renderImageGallery(t.effect_images);
+  if (effectGal) effectGal.innerHTML = renderImageGallery(t.effect_images, { kind: "effect", editable: canEditTemplateContent(t) });
   const renderGal = document.getElementById("detail-render-gallery");
-  if (renderGal) renderGal.innerHTML = renderImageGallery(t.render_images);
+  if (renderGal) renderGal.innerHTML = renderImageGallery(t.render_images, { kind: "render", editable: canEditTemplateContent(t) });
+  const deliveryList = document.getElementById("delivery-asset-list");
+  if (deliveryList) deliveryList.innerHTML = renderDeliveryAssetList(t);
+  bindDeliveryAssetDeletes(t);
+  bindVisualAssetDeletes(t);
 
   refreshCoverSourcePicker(t, id, document.getElementById("d-cover-source")?.value);
 }
@@ -3109,10 +3237,7 @@ async function uploadScenarioImage(scenarioId, kind, file) {
 }
 
 function renderGalleryPosterPreview(t) {
-  const price =
-    t.price_min != null
-      ? `${fmtMoney(t.price_min)}${t.price_max !== t.price_min && t.price_max != null ? " – " + fmtMoney(t.price_max) : ""}`
-      : "—";
+  const price = fmtPackagePrice(t);
   const dims =
     t.width_mm && t.depth_mm && t.height_mm
       ? `${t.width_mm}×${t.depth_mm}×${t.height_mm} mm`
@@ -4429,6 +4554,17 @@ function initAuthUi() {
   });
 }
 
+function renderScenarioClassificationRules() {
+  const root = document.getElementById("scenario-classification-rules");
+  if (!root) return;
+  const rules = meta.scenarioClassificationRules || [];
+  root.innerHTML = rules
+    .map(
+      (rule) => `<li><span>${escapeHtml(rule.condition)}</span><strong>${escapeHtml(rule.target)} / ${escapeHtml(rule.code)}</strong></li>`
+    )
+    .join("");
+}
+
 function renderCreateScenarioPicker() {
   const wrap = document.getElementById("scenario-picker-wrap");
   const grid = document.getElementById("scenario-picker-grid");
@@ -4436,6 +4572,7 @@ function renderCreateScenarioPicker() {
   if (!wrap || !grid || !meta?.scenarios) return;
 
   const items = meta.scenarios.filter((s) => s.enabled !== false);
+  renderScenarioClassificationRules();
   wrap.classList.remove("hidden");
   grid.innerHTML = items
     .map((s) => {

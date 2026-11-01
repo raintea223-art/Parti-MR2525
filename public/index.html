@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/figtree@5.1.1/600.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/figtree@5.1.1/700.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/figtree@5.1.1/800.css" />
-  <link rel="stylesheet" href="/styles.css?v=20261030d3" />
+  <link rel="stylesheet" href="/styles.css?v=20261102a" />
 </head>
 <body>
   <div class="app">
@@ -73,7 +73,7 @@
         <button type="button" class="link-btn" id="export-main-btn">导出主表 CSV</button>
         <button type="button" class="link-btn" id="export-bom-btn">导出 BOM CSV</button>
       </div>
-      <div class="ui-version" title="用于确认是否已加载最新前端">UI 20261030d3</div>
+      <div class="ui-version" title="用于确认是否已加载最新前端">UI 20261102a</div>
     </aside>
 
     <main class="main">
@@ -114,6 +114,11 @@
           </label>
           <div id="scenario-picker-wrap" class="full hidden">
             <span class="drop-label">选择应用场景 <span class="req">*</span></span>
+            <p class="hint">按判归顺序逐条判断，命中即停。判归依据须记入台账备注。</p>
+            <details class="scenario-rules">
+              <summary>查看场景判归 10 条</summary>
+              <ol id="scenario-classification-rules"></ol>
+            </details>
             <div id="scenario-picker-grid" class="scenario-picker-grid"></div>
           </div>
           <div class="full form-actions">
@@ -246,6 +251,6 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-  <script src="/app.js?v=20261030d2"></script>
+  <script src="/app.js?v=20261102a"></script>
 </body>
 </html>

@@ -23,10 +23,10 @@ function fmtMoney(n) {
   return `¥${Number(n).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
 }
 
-function fmtPriceRange(min, max) {
-  if (min == null && max == null) return "—";
-  if (min === max || max == null) return fmtMoney(min);
-  return `${fmtMoney(min)} – ${fmtMoney(max)}`;
+function fmtPackagePrice(template) {
+  const price = fmtMoney(template.package_price);
+  const basisDate = String(template.price_basis_date || "").trim();
+  return basisDate ? `${price}（含税，基准日 ${basisDate}）` : `${price}（含税）`;
 }
 
 function publicUrlToAbs(publicUrl) {
@@ -412,7 +412,7 @@ function renderCoverPage(template, coverData, tags, dims) {
   ${coverData ? '<div class="cover-shade"></div>' : ""}
   <div class="cover-info">
     <h1 class="cover-name">${escapeHtml(template.name)}</h1>
-    <div class="cover-price">${escapeHtml(fmtPriceRange(template.price_min, template.price_max))}</div>
+    <div class="cover-price">${escapeHtml(fmtPackagePrice(template))}</div>
     ${template.one_liner ? `<p class="cover-liner">${escapeHtml(template.one_liner)}</p>` : ""}
     <div class="cover-meta">
       <span>${escapeHtml(template.template_code)}</span>
@@ -441,7 +441,7 @@ function renderInfoPage(template, dims, tags) {
       <div><dt>应用场景</dt><dd>${escapeHtml(template.scenario)}</dd></div>
       <div><dt>外形尺寸</dt><dd>${escapeHtml(dims)}</dd></div>
       <div><dt>版本</dt><dd>${escapeHtml(template.version || "—")}</dd></div>
-      <div><dt>参考价</dt><dd>${escapeHtml(fmtPriceRange(template.price_min, template.price_max))}</dd></div>
+      <div><dt>整包价</dt><dd>${escapeHtml(fmtPackagePrice(template))}</dd></div>
       <div><dt>标签</dt><dd>${tagLine}</dd></div>
     </dl>
     ${

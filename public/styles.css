@@ -2103,6 +2103,17 @@ tfoot td {
 
 .gallery img:hover { transform: scale(1.05); }
 
+.visual-asset-item {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.visual-asset-delete {
+  padding: 0 4px;
+  font-size: 12px;
+}
+
 .cover-thumb {
   max-height: 80px;
   vertical-align: middle;
@@ -3353,4 +3364,46 @@ code {
 }
 .panel-line-color {
   min-width: 6rem;
+}
+
+.scenario-rules {
+  margin: var(--s-sm) 0 var(--s-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-raised);
+  padding: var(--s-md);
+}
+
+.scenario-rules summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.scenario-rules ol {
+  margin: var(--s-md) 0 0;
+  padding-left: 1.5rem;
+}
+
+.scenario-rules li {
+  margin-bottom: var(--s-xs);
+  color: var(--ink-muted);
+}
+
+.scenario-rules li strong {
+  margin-left: var(--s-sm);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.delivery-asset-table {
+  min-width: 680px;
+}
+
+.delivery-asset-table td:nth-child(2) {
+  word-break: break-all;
+}
+
+.danger-text {
+  color: var(--danger);
 }

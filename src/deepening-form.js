@@ -4,6 +4,7 @@ const { listPriceItems, getPriceItem, resolvePanelPricing } = require("./price-i
 const { findCustomItem, createCustomItem } = require("./price-custom");
 const { resolveProfileColorForWrite, listProfileColors } = require("./profile-colors");
 const { syncTemplateTags } = require("./tags");
+const { normalizeDeliveryFileList } = require("./delivery");
 
 const FORM_FORMAT = "mr2525-template-form-v1";
 
@@ -18,18 +19,44 @@ function csvRow(values) {
 }
 
 function parseCsvRows(text) {
-  const lines = String(text || "")
-    .replace(/^\uFEFF/, "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim());
-  return lines.slice(1).map((line, idx) => {
-    const cols = line.split(",").map((c) => c.trim());
+  const source = String(text || "").replace(/^\uFEFF/, "");
+  const matrix = [[]];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (inQuotes) {
+      if (char === '"' && source[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        field += char;
+      }
+      continue;
+    }
+    if (char === '"' && field === "") inQuotes = true;
+    else if (char === ",") {
+      matrix[matrix.length - 1].push(field);
+      field = "";
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && source[i + 1] === "\n") i += 1;
+      matrix[matrix.length - 1].push(field);
+      field = "";
+      matrix.push([]);
+    } else {
+      field += char;
+    }
+  }
+  matrix[matrix.length - 1].push(field);
+  const rows = matrix.filter((cols) => cols.some((value) => String(value).trim()));
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((value) => value.trim());
+  return rows.slice(1).map((cols, idx) => {
     const row = { _line: idx + 2 };
-    headers.forEach((h, i) => {
-      row[h] = cols[i] ?? "";
+    headers.forEach((header, i) => {
+      row[header] = cols[i] ?? "";
     });
     return row;
   });
@@ -76,6 +103,12 @@ function templateToFormPayload(template, { empty = false } = {}) {
         quote_note: "",
         price_override_min: null,
         price_override_max: null,
+        package_price: null,
+        price_basis_date: "",
+        installation_hours: null,
+        delivery_file_list: [],
+        eff_rnd_merged: false,
+        delivery_note: "",
         skin_upgrade_enabled: false,
         internal_note: "",
         tags: []
@@ -89,6 +122,12 @@ function templateToFormPayload(template, { empty = false } = {}) {
         quote_note: template.quote_note || "",
         price_override_min: template.price_override_min ?? null,
         price_override_max: template.price_override_max ?? null,
+        package_price: template.package_price ?? null,
+        price_basis_date: template.price_basis_date || "",
+        installation_hours: template.installation_hours ?? null,
+        delivery_file_list: normalizeDeliveryFileList(template.delivery_file_list),
+        eff_rnd_merged: !!template.eff_rnd_merged,
+        delivery_note: template.delivery_note || "",
         skin_upgrade_enabled: !!template.skin_upgrade_enabled,
         internal_note: template.internal_note || "",
         tags: [...(template.tags || [])]
@@ -150,25 +189,31 @@ function templateToFormPayload(template, { empty = false } = {}) {
 
 function buildBasicCsv(payload) {
   const b = payload.basic;
-  const lines = [
-    "字段,值",
-    `模板编号(只读),${payload.readonly.template_code}`,
-    `场景(只读),${payload.readonly.scenario}`,
-    `负责人(只读),${payload.readonly.assignee}`,
-    `版本(只读),${payload.readonly.version}`,
-    `名称,${b.name || ""}`,
-    `宽mm,${b.width_mm ?? ""}`,
-    `深mm,${b.depth_mm ?? ""}`,
-    `高mm,${b.height_mm ?? ""}`,
-    `一句话卖点,${b.one_liner || ""}`,
-    `报价口径,${b.quote_note || ""}`,
-    `参考价下限,${b.price_override_min ?? ""}`,
-    `参考价上限,${b.price_override_max ?? ""}`,
-    `可定制,${b.skin_upgrade_enabled ? "是" : "否"}`,
-    `内部备注,${b.internal_note || ""}`,
-    `标签,${(b.tags || []).join(";")}`
+  const rows = [
+    ["字段", "值"],
+    ["模板编号(只读)", payload.readonly.template_code],
+    ["场景(只读)", payload.readonly.scenario],
+    ["负责人(只读)", payload.readonly.assignee],
+    ["版本(只读)", payload.readonly.version],
+    ["名称", b.name || ""],
+    ["宽mm", b.width_mm ?? ""],
+    ["深mm", b.depth_mm ?? ""],
+    ["高mm", b.height_mm ?? ""],
+    ["一句话卖点", b.one_liner || ""],
+    ["报价口径", b.quote_note || ""],
+    ["参考价下限", b.price_override_min ?? ""],
+    ["参考价上限", b.price_override_max ?? ""],
+    ["整包价含税", b.package_price ?? ""],
+    ["价格基准日", b.price_basis_date || ""],
+    ["安装工时人h", b.installation_hours ?? ""],
+    ["交付文件清单", JSON.stringify(normalizeDeliveryFileList(b.delivery_file_list))],
+    ["EFF/RND合并", b.eff_rnd_merged ? "是" : "否"],
+    ["交付备注", b.delivery_note || ""],
+    ["可定制", b.skin_upgrade_enabled ? "是" : "否"],
+    ["内部备注", b.internal_note || ""],
+    ["标签", (b.tags || []).join(";")]
   ];
-  return lines.join("\n");
+  return rows.map(csvRow).join("\n");
 }
 
 function buildProfilesCsv(quote) {
@@ -318,7 +363,7 @@ function parseBasicCsv(text) {
     .split(/[;；]/)
     .map((t) => t.trim())
     .filter(Boolean);
-  return {
+  const basic = {
     name: map["名称"] || "",
     width_mm: numOrNull(map["宽mm"]),
     depth_mm: numOrNull(map["深mm"]),
@@ -332,6 +377,18 @@ function parseBasicCsv(text) {
     tags,
     _template_code: map["模板编号(只读)"] || map["模板编号"] || ""
   };
+  if (Object.hasOwn(map, "整包价含税")) basic.package_price = numOrNull(map["整包价含税"]);
+  if (Object.hasOwn(map, "价格基准日")) basic.price_basis_date = map["价格基准日"] || "";
+  if (Object.hasOwn(map, "安装工时人h")) basic.installation_hours = numOrNull(map["安装工时人h"]);
+  if (Object.hasOwn(map, "交付文件清单")) {
+    const raw = String(map["交付文件清单"] || "").trim();
+    basic.delivery_file_list = raw.startsWith("[")
+      ? normalizeDeliveryFileList(raw)
+      : raw.split(/[;；]/).map((item) => item.trim()).filter(Boolean);
+  }
+  if (Object.hasOwn(map, "EFF/RND合并")) basic.eff_rnd_merged = parseBool(map["EFF/RND合并"]);
+  if (Object.hasOwn(map, "交付备注")) basic.delivery_note = map["交付备注"] || "";
+  return basic;
 }
 
 function parseProfilesCsv(text) {
@@ -622,14 +679,38 @@ function countSection(arr) {
   return Array.isArray(arr) ? arr.length : 0;
 }
 
+function withDeliveryDefaults(template, basic) {
+  return {
+    ...basic,
+    package_price: basic.package_price === undefined ? template.package_price ?? null : basic.package_price,
+    price_basis_date: basic.price_basis_date === undefined ? template.price_basis_date ?? "" : basic.price_basis_date,
+    installation_hours: basic.installation_hours === undefined ? template.installation_hours ?? null : basic.installation_hours,
+    delivery_file_list: normalizeDeliveryFileList(
+      basic.delivery_file_list === undefined ? template.delivery_file_list : basic.delivery_file_list
+    ),
+    eff_rnd_merged: basic.eff_rnd_merged === undefined ? template.eff_rnd_merged ?? false : basic.eff_rnd_merged,
+    delivery_note: basic.delivery_note === undefined ? template.delivery_note ?? "" : basic.delivery_note
+  };
+}
+
 function buildPreviewDiff(template, resolved) {
+  const basic = withDeliveryDefaults(template, resolved.basic);
   return {
     basic: {
-      name: { from: template.name, to: resolved.basic.name },
+      name: { from: template.name, to: basic.name },
       dimensions: {
         from: [template.width_mm, template.depth_mm, template.height_mm],
-        to: [resolved.basic.width_mm, resolved.basic.depth_mm, resolved.basic.height_mm]
-      }
+        to: [basic.width_mm, basic.depth_mm, basic.height_mm]
+      },
+      package_price: { from: template.package_price ?? null, to: basic.package_price },
+      price_basis_date: { from: template.price_basis_date || "", to: basic.price_basis_date },
+      installation_hours: { from: template.installation_hours ?? null, to: basic.installation_hours },
+      delivery_file_list: {
+        from: normalizeDeliveryFileList(template.delivery_file_list),
+        to: basic.delivery_file_list
+      },
+      eff_rnd_merged: { from: !!template.eff_rnd_merged, to: !!basic.eff_rnd_merged },
+      delivery_note: { from: template.delivery_note || "", to: basic.delivery_note }
     },
     quote: {
       profiles: { from: countSection(template.quote_profiles), to: resolved.profiles.length },
@@ -663,7 +744,7 @@ function applyDeepeningForm(db, template, payload, user) {
 
   const createdBy = user.display_name || user.username || "";
   const templateId = template.id;
-  const b = resolved.basic;
+  const b = withDeliveryDefaults(template, resolved.basic);
 
   db.exec("BEGIN");
   try {
@@ -678,6 +759,8 @@ function applyDeepeningForm(db, template, payload, user) {
         name = ?, width_mm = ?, depth_mm = ?, height_mm = ?,
         one_liner = ?, quote_note = ?,
         price_override_min = ?, price_override_max = ?,
+        package_price = ?, price_basis_date = ?, installation_hours = ?,
+        delivery_file_list = ?, eff_rnd_merged = ?, delivery_note = ?,
         skin_upgrade_enabled = ?, internal_note = ?,
         updated_at = datetime('now')
        WHERE id = ?`
@@ -690,6 +773,12 @@ function applyDeepeningForm(db, template, payload, user) {
       b.quote_note,
       b.price_override_min,
       b.price_override_max,
+      b.package_price,
+      b.price_basis_date,
+      b.installation_hours,
+      JSON.stringify(b.delivery_file_list),
+      b.eff_rnd_merged ? 1 : 0,
+      b.delivery_note,
       b.skin_upgrade_enabled ? 1 : 0,
       b.internal_note,
       templateId

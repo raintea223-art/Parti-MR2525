@@ -58,7 +58,7 @@ const {
   updateProfileFormula
 } = require("./profile-formula");
 const { PANEL_MATERIAL_TYPES, PANEL_COLOR_SUGGESTIONS, PANEL_COLOR_SWATCHES } = require("./price-seed");
-const { PROFILE_FORMULA_NOTE, PANEL_FORMULA_NOTE, STATUS_LABELS, STATUS_FLOW, IMAGE_KINDS, AUDIT_CHECKLIST, BOM_CATEGORIES, CUSTOM_BOM_CATEGORIES, BOM_UNITS, TAGS, PRICE_FACTORS, DEFAULT_QUOTE_NOTE, EXTERNAL_PROCESS_FEE_RATE } = require("./constants");
+const { PROFILE_FORMULA_NOTE, PANEL_FORMULA_NOTE, STATUS_LABELS, STATUS_FLOW, IMAGE_KINDS, DELIVERY_FILE_KINDS, SCENARIO_CLASSIFICATION_RULES, AUDIT_CHECKLIST, BOM_CATEGORIES, CUSTOM_BOM_CATEGORIES, BOM_UNITS, TAGS, PRICE_FACTORS, DEFAULT_QUOTE_NOTE, EXTERNAL_PROCESS_FEE_RATE } = require("./constants");
 const {
   listTagsCloud,
   searchTags,
@@ -85,7 +85,17 @@ const {
   applyDeepeningForm
 } = require("./deepening-form");
 const { profileFactoryPrice, profileLineTotal } = require("./pricing");
-const { nextTemplateCode, resolveSkpBaseName } = require("./id");
+const { nextTemplateCode, resolveSkpBaseName, decodeMultipartFilename } = require("./id");
+const {
+  normalizeDeliveryFileList,
+  getDeliveryAsset,
+  addDeliveryAsset,
+  addVisualAsset,
+  removeVisualAsset,
+  removeDeliveryAsset,
+  validatePublishReadiness,
+  isProtectedDeliveryAssetPath
+} = require("./delivery");
 const { saveAuditArchive } = require("./audit");
 const {
   generatePublicSheetHtml,
@@ -137,6 +147,7 @@ const {
   getTemplateAssetDir,
   getSkpPath,
   toPublicUrl,
+  relFromUploads,
   syncTemplateImages,
   deleteTemplateAssets
 } = require("./storage");
@@ -182,6 +193,7 @@ function requireAdmin(req, res, next) {
 const adminAuth = [requireAuth, requireAdmin];
 
 app.use(express.json({ limit: "2mb" }));
+app.use(attachUser(db));
 app.use(
   express.static(path.join(__dirname, "..", "public"), {
     setHeaders(res, filePath) {
@@ -193,6 +205,12 @@ app.use(
     }
   })
 );
+app.use("/uploads", (req, res, next) => {
+  if (isProtectedDeliveryAssetPath(req.path) && !req.user) {
+    return res.status(401).json({ error: "登录后可下载交付附件" });
+  }
+  next();
+});
 app.use("/uploads", express.static(UPLOADS_DIR));
 app.use(
   "/vendor/html2canvas",
@@ -238,6 +256,8 @@ function createTemplateUpload() {
         let dir = getTemplateAssetDir(row.template_code);
         if (IMAGE_KINDS[kind]) {
           dir = path.join(dir, IMAGE_KINDS[kind].folder);
+        } else if (DELIVERY_FILE_KINDS[kind]) {
+          dir = path.join(dir, DELIVERY_FILE_KINDS[kind].folder);
         }
         fs.mkdirSync(dir, { recursive: true });
         cb(null, dir);
@@ -245,18 +265,35 @@ function createTemplateUpload() {
       filename(req, file, cb) {
         const row = db.prepare("SELECT template_code FROM templates WHERE id = ?").get(req.params.id);
         if (req.params.kind === "skp" && row) {
-          cb(null, `${row.template_code}.skp`);
+          const safe = file.originalname.replace(/[^\w.\-()\u4e00-\u9fff]/g, "_");
+          cb(null, `.upload-${Date.now()}-${Math.random().toString(16).slice(2)}-${safe}`);
           return;
         }
         const safe = file.originalname.replace(/[^\w.\-()\u4e00-\u9fff]/g, "_");
         cb(null, `${Date.now()}-${safe}`);
       }
     }),
-    limits: { fileSize: 200 * 1024 * 1024 }
+    limits: { fileSize: 200 * 1024 * 1024 },
+    fileFilter(req, file, cb) {
+      const kind = req.params.kind;
+      const lowerName = String(file.originalname || "").toLowerCase();
+      if (kind === "skp" && !lowerName.endsWith(".skp")) return cb(new Error("请上传 .skp 文件"));
+      if (IMAGE_KINDS[kind]) {
+        const allowed = kind === "photo" ? [".jpg", ".jpeg", ".png", ".webp"] : [".jpg", ".png"];
+        if (!allowed.some((ext) => lowerName.endsWith(ext))) {
+          return cb(new Error(`${IMAGE_KINDS[kind].label}仅支持 ${allowed.join(" / ")}`));
+        }
+      }
+      if (DELIVERY_FILE_KINDS[kind]) {
+        const allowed = DELIVERY_FILE_KINDS[kind].extensions;
+        if (!allowed.some((ext) => lowerName.endsWith(ext))) {
+          return cb(new Error(`${DELIVERY_FILE_KINDS[kind].label}仅支持 ${allowed.join(" / ")}`));
+        }
+      }
+      cb(null, true);
+    }
   });
 }
-
-app.use(attachUser(db));
 
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body || {};
@@ -332,6 +369,8 @@ app.get("/api/meta", ...readAuth, (req, res) => {
     statusLabels: STATUS_LABELS,
     statusFlow: STATUS_FLOW,
     imageKinds: IMAGE_KINDS,
+    deliveryFileKinds: DELIVERY_FILE_KINDS,
+    scenarioClassificationRules: SCENARIO_CLASSIFICATION_RULES,
     auditChecklist: AUDIT_CHECKLIST,
     externalProcessFeeRate: EXTERNAL_PROCESS_FEE_RATE,
     bomCategories: BOM_CATEGORIES,
@@ -814,11 +853,20 @@ app.post("/api/templates/register", ...writeAuth, (req, res) => {
       const result = db
         .prepare(
           `INSERT INTO templates (
-            template_code, slug, name, scenario, assignee, skp_file,
+            template_code, slug, name, scenario, assignee, skp_file, skp_delivery_name,
             quote_note, status, skin_upgrade_enabled
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_quote', 0)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_quote', 0)`
         )
-        .run(templateCode, slug, name, scenario, assignee, skpUrl, DEFAULT_QUOTE_NOTE);
+        .run(
+          templateCode,
+          slug,
+          name,
+          scenario,
+          assignee,
+          skpUrl,
+          `${templateCode}_SKP_模型_v1.0.skp`,
+          DEFAULT_QUOTE_NOTE
+        );
 
       const template = getTemplate(db, result.lastInsertRowid);
       syncTemplateImages(db, db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id));
@@ -859,6 +907,12 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
     "quote_note",
     "price_override_min",
     "price_override_max",
+    "package_price",
+    "price_basis_date",
+    "installation_hours",
+    "delivery_file_list",
+    "eff_rnd_merged",
+    "delivery_note",
     "inquiry_form_url",
     "version",
     "internal_note",
@@ -870,16 +924,12 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
   const sets = [];
   const values = [];
 
-  if ("tags" in req.body) {
-    const names = Array.isArray(req.body.tags) ? req.body.tags : [];
-    syncTemplateTags(db, req.params.id, names);
-  }
-
   for (const key of allowed) {
     if (!(key in req.body) || key === "tags" || key === "version") continue;
     let val = req.body[key];
     if (key === "price_factors") val = JSON.stringify(val);
-    if (key === "skin_upgrade_enabled") val = val ? 1 : 0;
+    if (key === "delivery_file_list") val = JSON.stringify(normalizeDeliveryFileList(val));
+    if (key === "skin_upgrade_enabled" || key === "eff_rnd_merged") val = val ? 1 : 0;
     sets.push(`${key} = ?`);
     values.push(val);
   }
@@ -894,21 +944,53 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
         error: `不能从「${STATUS_LABELS[existing.status]}」直接变为「${STATUS_LABELS[req.body.status]}」`
       });
     }
+    if (req.body.status === "pending_review") {
+      const candidate = {
+        ...existing,
+        ...req.body,
+        delivery_file_list:
+          "delivery_file_list" in req.body
+            ? normalizeDeliveryFileList(req.body.delivery_file_list)
+            : existing.delivery_file_list,
+        eff_rnd_merged:
+          "eff_rnd_merged" in req.body ? !!req.body.eff_rnd_merged : existing.eff_rnd_merged
+      };
+      const readiness = validatePublishReadiness(candidate);
+      if (!readiness.valid) {
+        return res.status(400).json({
+          error: `发布准入未通过：${readiness.errors.join("；")}`,
+          errors: readiness.errors
+        });
+      }
+    }
   }
 
-  if (sets.length === 0) {
+  if (sets.length === 0 && !("tags" in req.body)) {
     return res.json(existing);
   }
 
   sets.push("updated_at = datetime('now')");
   values.push(req.params.id);
-
-  db.prepare(`UPDATE templates SET ${sets.join(", ")} WHERE id = ?`).run(...values);
-  const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(req.params.id);
-  if ("cover_source" in req.body) {
-    syncTemplateImages(db, row);
+  db.exec("BEGIN");
+  try {
+    if ("tags" in req.body) {
+      const names = Array.isArray(req.body.tags) ? req.body.tags : [];
+      syncTemplateTags(db, req.params.id, names);
+    }
+    if (sets.length > 1) {
+      db.prepare(`UPDATE templates SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+    }
+    const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(req.params.id);
+    if ("cover_source" in req.body) {
+      syncTemplateImages(db, row);
+    }
+    const response = getTemplate(db, req.params.id);
+    db.exec("COMMIT");
+    res.json(response);
+  } catch (e) {
+    db.exec("ROLLBACK");
+    res.status(500).json({ error: e.message });
   }
-  res.json(getTemplate(db, req.params.id));
 });
 
 app.delete("/api/templates/:id", ...adminAuth, (req, res) => {
@@ -1610,6 +1692,14 @@ app.post("/api/templates/:id/audit/approve", ...writeAuth, (req, res) => {
     return res.status(400).json({ error: "仅「待审核」模板可通过审核发布" });
   }
 
+  const readiness = validatePublishReadiness(template);
+  if (!readiness.valid) {
+    return res.status(400).json({
+      error: `发布准入未通过：${readiness.errors.join("；")}`,
+      errors: readiness.errors
+    });
+  }
+
   const { checklist = {}, audit_note = "" } = req.body || {};
   for (const item of AUDIT_CHECKLIST) {
     if (!checklist[item.id]) {
@@ -1677,28 +1767,162 @@ app.post("/api/templates/:id/upload/:kind", ...writeAuth, (req, res) => {
   if (!template) return;
 
   const kind = req.params.kind;
-  if (!["photo", "effect", "render", "skp"].includes(kind)) {
-    return res.status(400).json({ error: "未知上传类型，可用：photo / effect / render / skp" });
+  const allowedKinds = ["photo", "effect", "render", "skp", ...Object.keys(DELIVERY_FILE_KINDS)];
+  if (!allowedKinds.includes(kind)) {
+    return res.status(400).json({ error: `未知上传类型，可用：${allowedKinds.join(" / ")}` });
   }
 
   createTemplateUpload().single("file")(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message || "上传失败" });
     if (!req.file) return res.status(400).json({ error: "未收到文件" });
 
+    let transactionOpen = false;
+    let skpBackupPath = "";
+    let skpFinalPath = "";
+    const skpStagedPath = kind === "skp" ? req.file.path : "";
     try {
       const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id);
+      const originalName = decodeMultipartFilename(req.file.originalname);
       if (kind === "skp") {
-        const skpUrl = toPublicUrl(`${row.template_code}/${row.template_code}.skp`);
-        db.prepare(
-          "UPDATE templates SET skp_file = ?, updated_at = datetime('now') WHERE id = ?"
-        ).run(skpUrl, template.id);
+        skpFinalPath = getSkpPath(row.template_code);
+        if (fs.existsSync(skpFinalPath)) {
+          skpBackupPath = `${skpFinalPath}.backup-${Date.now()}`;
+          fs.renameSync(skpFinalPath, skpBackupPath);
+        }
+        fs.renameSync(skpStagedPath, skpFinalPath);
       }
-      syncTemplateImages(db, db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id));
-      res.json(getTemplate(db, template.id));
+      const filePath = kind === "skp"
+        ? toPublicUrl(`${row.template_code}/${row.template_code}.skp`)
+        : toPublicUrl(relFromUploads(req.file.path));
+      db.exec("BEGIN");
+      transactionOpen = true;
+      if (kind === "skp") {
+        db.prepare(
+          "UPDATE templates SET skp_file = ?, skp_delivery_name = ?, updated_at = datetime('now') WHERE id = ?"
+        ).run(filePath, originalName, template.id);
+      }
+      if (DELIVERY_FILE_KINDS[kind]) {
+        addDeliveryAsset(db, {
+          templateId: template.id,
+          kind,
+          fileName: originalName,
+          filePath,
+          uploadedBy: req.user.display_name || req.user.username
+        });
+      }
+      if (kind === "effect" || kind === "render") {
+        addVisualAsset(db, {
+          templateId: template.id,
+          kind,
+          fileName: originalName,
+          filePath,
+          uploadedBy: req.user.display_name || req.user.username
+        });
+      }
+      if (IMAGE_KINDS[kind]) {
+        syncTemplateImages(db, db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id));
+      }
+      const response = getTemplate(db, template.id);
+      db.exec("COMMIT");
+      transactionOpen = false;
+      if (skpBackupPath && fs.existsSync(skpBackupPath)) {
+        try { fs.unlinkSync(skpBackupPath); } catch (_) {}
+      }
+      res.json(response);
     } catch (e) {
+      if (transactionOpen) db.exec("ROLLBACK");
+      if (kind === "skp") {
+        if (skpFinalPath && fs.existsSync(skpFinalPath)) fs.unlinkSync(skpFinalPath);
+        if (skpBackupPath && fs.existsSync(skpBackupPath)) fs.renameSync(skpBackupPath, skpFinalPath);
+        if (skpStagedPath && fs.existsSync(skpStagedPath)) fs.unlinkSync(skpStagedPath);
+      } else if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
       res.status(500).json({ error: e.message });
     }
   });
+});
+
+app.delete("/api/templates/:id/visual-assets", ...writeAuth, (req, res) => {
+  const template = guardEditableTemplateId(db, req.params.id, res);
+  if (!template) return;
+  const { kind = "", file_path: rawPath = "" } = req.body || {};
+  if (!IMAGE_KINDS[kind]) return res.status(400).json({ error: "未知图片类型" });
+  const filePath = String(rawPath).replace(/\\/g, "/");
+  const images = template[`${kind}_images`] || [];
+  if (!images.includes(filePath)) return res.status(404).json({ error: "图片不在当前模板中" });
+
+  const relativePath = filePath.replace(/^\/uploads\//, "");
+  const absolutePath = path.resolve(UPLOADS_DIR, relativePath);
+  const expectedDir = path.resolve(getTemplateAssetDir(template.template_code), IMAGE_KINDS[kind].folder);
+  if (!absolutePath.startsWith(expectedDir + path.sep)) {
+    return res.status(400).json({ error: "图片路径不在当前分类目录内" });
+  }
+
+  let pendingDeletePath = "";
+  let transactionOpen = false;
+  try {
+    if (fs.existsSync(absolutePath)) {
+      pendingDeletePath = `${absolutePath}.delete-${Date.now()}`;
+      fs.renameSync(absolutePath, pendingDeletePath);
+    }
+    db.exec("BEGIN");
+    transactionOpen = true;
+    if (kind === "effect" || kind === "render") {
+      removeVisualAsset(db, { templateId: template.id, kind, filePath });
+    }
+    db.prepare("UPDATE templates SET cover_source = '', cover_image = NULL WHERE id = ?").run(template.id);
+    syncTemplateImages(db, db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id));
+    const response = getTemplate(db, template.id);
+    db.exec("COMMIT");
+    transactionOpen = false;
+    if (pendingDeletePath && fs.existsSync(pendingDeletePath)) {
+      try { fs.unlinkSync(pendingDeletePath); } catch (_) {}
+    }
+    res.json(response);
+  } catch (e) {
+    if (transactionOpen) db.exec("ROLLBACK");
+    if (pendingDeletePath && fs.existsSync(pendingDeletePath) && !fs.existsSync(absolutePath)) {
+      fs.renameSync(pendingDeletePath, absolutePath);
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/delivery-assets/:assetId", ...writeAuth, (req, res) => {
+  const asset = getDeliveryAsset(db, req.params.assetId);
+  if (!asset) return res.status(404).json({ error: "交付附件不存在" });
+  const template = guardEditableTemplateId(db, asset.template_id, res);
+  if (!template) return;
+
+  const relativePath = String(asset.file_path || "").replace(/^\/uploads\//, "");
+  const absolutePath = path.resolve(UPLOADS_DIR, relativePath);
+  const templateDir = path.resolve(getTemplateAssetDir(template.template_code));
+  if (!absolutePath.startsWith(templateDir + path.sep)) {
+    return res.status(400).json({ error: "附件路径不在当前模板目录内" });
+  }
+
+  let pendingDeletePath = "";
+  try {
+    if (fs.existsSync(absolutePath)) {
+      pendingDeletePath = `${absolutePath}.delete-${Date.now()}`;
+      fs.renameSync(absolutePath, pendingDeletePath);
+    }
+    removeDeliveryAsset(db, asset.id);
+    const response = getTemplate(db, template.id);
+    if (pendingDeletePath && fs.existsSync(pendingDeletePath)) {
+      try { fs.unlinkSync(pendingDeletePath); } catch (_) {}
+    }
+    res.json(response);
+  } catch (e) {
+    const stillRegistered = !!getDeliveryAsset(db, asset.id);
+    if (stillRegistered && pendingDeletePath && fs.existsSync(pendingDeletePath) && !fs.existsSync(absolutePath)) {
+      fs.renameSync(pendingDeletePath, absolutePath);
+    } else if (!stillRegistered && pendingDeletePath && fs.existsSync(pendingDeletePath)) {
+      fs.unlinkSync(pendingDeletePath);
+    }
+    res.status(500).json({ error: e.message });
+  }
 });
 
 function csvEscape(val) {
@@ -1732,6 +1956,12 @@ app.get("/api/export/feishu-main", ...exportAuth, (_req, res) => {
     "高mm",
     "参考价下限",
     "参考价上限",
+    "整包价含税",
+    "价格基准日",
+    "安装工时人h",
+    "交付文件清单",
+    "EFF/RND合并",
+    "交付备注",
     "报价口径",
     "变价因素",
     "负责人",
@@ -1757,6 +1987,12 @@ app.get("/api/export/feishu-main", ...exportAuth, (_req, res) => {
         t.height_mm ?? "",
         t.price_min,
         t.price_max,
+        t.package_price ?? "",
+        t.price_basis_date || "",
+        t.installation_hours ?? "",
+        JSON.stringify(normalizeDeliveryFileList(t.delivery_file_list)),
+        t.eff_rnd_merged ? "是" : "否",
+        t.delivery_note || "",
         t.quote_note,
         t.price_factors.join(";"),
         t.assignee,
