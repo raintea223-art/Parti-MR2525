@@ -18,7 +18,7 @@ const { migratePanelMultiColor } = require("./panel-price-colors");
 const { getCustomItem, enrichBomLine } = require("./price-custom");
 const { initTagsSchema, migrateTagsFromTemplates } = require("./tags");
 const { TAGS } = require("./constants");
-const { listDeliveryAssets, listVisualAssets, normalizeDeliveryFileList } = require("./delivery");
+const { listDeliveryAssets, listVisualAssets, normalizeDeliveryFileList, buildDeliveryFileList } = require("./delivery");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DB_PATH = path.join(DATA_DIR, "catalog.db");
@@ -288,6 +288,13 @@ function initSchema(db) {
   ensureColumn(db, "templates", "eff_rnd_merged", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "templates", "delivery_note", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "skp_delivery_name", "TEXT DEFAULT ''");
+  // 台账字段（手册 D1 台账行：部署环境 / 面积区间 / 第一购买理由 / 源模板 / 关联项目 PRJ / 台账备注）
+  ensureColumn(db, "templates", "deploy_env", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "area_range", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "first_buying_reason", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "source_template", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "related_prj", "TEXT DEFAULT ''");
+  ensureColumn(db, "templates", "ledger_note", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "skin_upgrade_enabled", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "templates", "cover_source", "TEXT DEFAULT ''");
   ensureColumn(db, "templates", "last_audit_note", "TEXT DEFAULT ''");
@@ -578,7 +585,7 @@ function getTemplate(db, id) {
   const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(id);
   if (!row) return null;
   const quote = buildQuoteSummary(db, row);
-  return {
+  const base = {
     ...mapTemplate(row, quote),
     quote,
     quote_profiles: quote.profileLines,
@@ -589,6 +596,9 @@ function getTemplate(db, id) {
     delivery_assets: listDeliveryAssets(db, id),
     visual_assets: listVisualAssets(db, id)
   };
+  // 交付文件清单由系统自动汇总（SKP + 图片 + 附件 + 自动生成的 BOM/INF）
+  base.delivery_file_list = buildDeliveryFileList(base);
+  return base;
 }
 
 function nextSortOrder(db, table, templateId) {

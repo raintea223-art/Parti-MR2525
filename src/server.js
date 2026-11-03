@@ -94,8 +94,12 @@ const {
   removeVisualAsset,
   removeDeliveryAsset,
   validatePublishReadiness,
-  isProtectedDeliveryAssetPath
+  isProtectedDeliveryAssetPath,
+  buildDeliveryFileName,
+  sanitizeDeliveryDescription
 } = require("./delivery");
+const { buildDeliveryPackage, sanitizeFolderName } = require("./delivery-package");
+const { normalizeVersion } = require("./version");
 const { saveAuditArchive } = require("./audit");
 const {
   generatePublicSheetHtml,
@@ -292,6 +296,43 @@ function createTemplateUpload() {
       }
       cb(null, true);
     }
+  });
+}
+
+// 已有交付文件名集合（用于六段定式去重/加序号）
+function existingDeliveryNames(db, templateId, { excludeSkp = false } = {}) {
+  const names = new Set();
+  if (!excludeSkp) {
+    const row = db.prepare("SELECT skp_delivery_name FROM templates WHERE id = ?").get(templateId);
+    if (row?.skp_delivery_name) names.add(row.skp_delivery_name);
+  }
+  for (const a of db.prepare("SELECT file_name FROM template_delivery_assets WHERE template_id = ?").all(templateId)) {
+    names.add(a.file_name);
+  }
+  for (const a of db.prepare("SELECT file_name FROM template_visual_assets WHERE template_id = ?").all(templateId)) {
+    names.add(a.file_name);
+  }
+  return names;
+}
+
+// 六段定式命名：无冲突不带序号；冲突则按 01 起加序号；再冲突加时间戳后缀兜底
+function assignDeliveryFileName({ templateCode, typeCode, originalName, version, existingNames }) {
+  const ext = path.extname(originalName);
+  const desc = sanitizeDeliveryDescription(originalName);
+  const make = (seq = "") =>
+    buildDeliveryFileName({ templateCode, typeCode, description: desc, version, seq, ext });
+  const base = make();
+  if (!existingNames.has(base)) return base;
+  for (let i = 1; i <= 99; i++) {
+    const candidate = make(String(i).padStart(2, "0"));
+    if (!existingNames.has(candidate)) return candidate;
+  }
+  return buildDeliveryFileName({
+    templateCode,
+    typeCode,
+    description: `${desc}${Date.now().toString(36).slice(-4)}`,
+    version,
+    ext
   });
 }
 
@@ -843,12 +884,13 @@ app.post("/api/templates/register", ...writeAuth, (req, res) => {
       const { templateCode, slug, nameSegment } = nextTemplateCode(db, scenario, originalBase);
       ensureTemplateAssetDirs(templateCode);
 
-      const skpDest = getSkpPath(templateCode);
+      const skpDeliveryName = `${templateCode}_SKP_${sanitizeDeliveryDescription(originalBase)}_v1.0.skp`;
+      const skpDest = path.join(getTemplateAssetDir(templateCode), skpDeliveryName);
       fs.renameSync(req.file.path, skpDest);
 
       const assignee = req.user.display_name || req.user.username;
       const name = nameSegment;
-      const skpUrl = toPublicUrl(`${templateCode}/${templateCode}.skp`);
+      const skpUrl = toPublicUrl(`${templateCode}/${skpDeliveryName}`);
 
       const result = db
         .prepare(
@@ -864,7 +906,7 @@ app.post("/api/templates/register", ...writeAuth, (req, res) => {
           scenario,
           assignee,
           skpUrl,
-          `${templateCode}_SKP_模型_v1.0.skp`,
+          skpDeliveryName,
           DEFAULT_QUOTE_NOTE
         );
 
@@ -910,7 +952,6 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
     "package_price",
     "price_basis_date",
     "installation_hours",
-    "delivery_file_list",
     "eff_rnd_merged",
     "delivery_note",
     "inquiry_form_url",
@@ -918,6 +959,12 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
     "internal_note",
     "skin_upgrade_enabled",
     "cover_source",
+    "deploy_env",
+    "area_range",
+    "first_buying_reason",
+    "source_template",
+    "related_prj",
+    "ledger_note",
     "status"
   ];
 
@@ -1762,6 +1809,20 @@ app.post("/api/templates/:id/audit/reject", ...writeAuth, (req, res) => {
   res.json(getTemplate(db, template.id));
 });
 
+app.get("/api/templates/:id/delivery-package.zip", ...readAuth, (req, res) => {
+  const template = getTemplate(db, req.params.id);
+  if (!template) return res.status(404).json({ error: "模板不存在" });
+  try {
+    const pkg = buildDeliveryPackage(template);
+    const zipName = `${template.template_code} ${sanitizeFolderName(template.name)} 交付包.zip`;
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", contentDisposition(zipName));
+    res.send(pkg.buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/templates/:id/upload/:kind", ...writeAuth, (req, res) => {
   const template = guardEditableTemplateId(db, req.params.id, res);
   if (!template) return;
@@ -1777,35 +1838,55 @@ app.post("/api/templates/:id/upload/:kind", ...writeAuth, (req, res) => {
     if (!req.file) return res.status(400).json({ error: "未收到文件" });
 
     let transactionOpen = false;
-    let skpBackupPath = "";
-    let skpFinalPath = "";
-    const skpStagedPath = kind === "skp" ? req.file.path : "";
+    let finalAbsPath = "";
+    let backupPath = "";
+    let oldSkpAbsPath = "";
+    const stagedPath = req.file.path;
     try {
       const row = db.prepare("SELECT * FROM templates WHERE id = ?").get(template.id);
       const originalName = decodeMultipartFilename(req.file.originalname);
-      if (kind === "skp") {
-        skpFinalPath = getSkpPath(row.template_code);
-        if (fs.existsSync(skpFinalPath)) {
-          skpBackupPath = `${skpFinalPath}.backup-${Date.now()}`;
-          fs.renameSync(skpFinalPath, skpBackupPath);
+
+      // 实拍照片不属于八类件，保持系统命名；其余交付文件按六段定式重命名归档
+      let deliveryName = originalName;
+      let filePath = "";
+      if (kind !== "photo") {
+        const typeCodeMap = { skp: "SKP", effect: "EFF", render: "RND" };
+        const typeCode = typeCodeMap[kind] || (DELIVERY_FILE_KINDS[kind]?.typeCode || kind.toUpperCase());
+        const existingNames = existingDeliveryNames(db, template.id, { excludeSkp: kind === "skp" });
+        deliveryName = assignDeliveryFileName({
+          templateCode: row.template_code,
+          typeCode,
+          originalName,
+          version: normalizeVersion(row.version),
+          existingNames
+        });
+        finalAbsPath = path.join(path.dirname(stagedPath), deliveryName);
+        if (fs.existsSync(finalAbsPath)) {
+          backupPath = `${finalAbsPath}.backup-${Date.now()}`;
+          fs.renameSync(finalAbsPath, backupPath);
         }
-        fs.renameSync(skpStagedPath, skpFinalPath);
+        fs.renameSync(stagedPath, finalAbsPath);
+        filePath = toPublicUrl(relFromUploads(finalAbsPath));
+        if (kind === "skp" && row.skp_file) {
+          const oldRel = String(row.skp_file).replace(/^\/uploads\//, "");
+          oldSkpAbsPath = oldRel ? path.resolve(UPLOADS_DIR, decodeURIComponent(oldRel)) : "";
+        }
+      } else {
+        filePath = toPublicUrl(relFromUploads(stagedPath));
       }
-      const filePath = kind === "skp"
-        ? toPublicUrl(`${row.template_code}/${row.template_code}.skp`)
-        : toPublicUrl(relFromUploads(req.file.path));
+
       db.exec("BEGIN");
       transactionOpen = true;
       if (kind === "skp") {
         db.prepare(
           "UPDATE templates SET skp_file = ?, skp_delivery_name = ?, updated_at = datetime('now') WHERE id = ?"
-        ).run(filePath, originalName, template.id);
+        ).run(filePath, deliveryName, template.id);
       }
       if (DELIVERY_FILE_KINDS[kind]) {
         addDeliveryAsset(db, {
           templateId: template.id,
           kind,
-          fileName: originalName,
+          fileName: deliveryName,
           filePath,
           uploadedBy: req.user.display_name || req.user.username
         });
@@ -1814,7 +1895,7 @@ app.post("/api/templates/:id/upload/:kind", ...writeAuth, (req, res) => {
         addVisualAsset(db, {
           templateId: template.id,
           kind,
-          fileName: originalName,
+          fileName: deliveryName,
           filePath,
           uploadedBy: req.user.display_name || req.user.username
         });
@@ -1825,18 +1906,23 @@ app.post("/api/templates/:id/upload/:kind", ...writeAuth, (req, res) => {
       const response = getTemplate(db, template.id);
       db.exec("COMMIT");
       transactionOpen = false;
-      if (skpBackupPath && fs.existsSync(skpBackupPath)) {
-        try { fs.unlinkSync(skpBackupPath); } catch (_) {}
+      if (backupPath && fs.existsSync(backupPath)) {
+        try { fs.unlinkSync(backupPath); } catch (_) {}
+      }
+      if (oldSkpAbsPath && fs.existsSync(oldSkpAbsPath) && oldSkpAbsPath !== finalAbsPath) {
+        try { fs.unlinkSync(oldSkpAbsPath); } catch (_) {}
       }
       res.json(response);
     } catch (e) {
       if (transactionOpen) db.exec("ROLLBACK");
-      if (kind === "skp") {
-        if (skpFinalPath && fs.existsSync(skpFinalPath)) fs.unlinkSync(skpFinalPath);
-        if (skpBackupPath && fs.existsSync(skpBackupPath)) fs.renameSync(skpBackupPath, skpFinalPath);
-        if (skpStagedPath && fs.existsSync(skpStagedPath)) fs.unlinkSync(skpStagedPath);
-      } else if (req.file?.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (finalAbsPath && fs.existsSync(finalAbsPath)) {
+        try { fs.unlinkSync(finalAbsPath); } catch (_) {}
+      }
+      if (backupPath && fs.existsSync(backupPath) && !fs.existsSync(finalAbsPath)) {
+        try { fs.renameSync(backupPath, finalAbsPath); } catch (_) {}
+      }
+      if (stagedPath && fs.existsSync(stagedPath)) {
+        try { fs.unlinkSync(stagedPath); } catch (_) {}
       }
       res.status(500).json({ error: e.message });
     }

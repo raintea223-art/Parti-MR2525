@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { DELIVERY_FILE_KINDS } = require("./constants");
+const { normalizeVersion } = require("./version");
 
 const DEFAULT_UPLOADS_DIR = path.join(__dirname, "..", "data", "uploads");
 
@@ -8,11 +9,17 @@ const DELIVERY_TYPE_RULES = {
   EFF: { extensions: ["jpg", "png"] },
   RND: { extensions: ["jpg", "png"] },
   SKP: { extensions: ["skp"] },
-  DWG: { extensions: ["dwg"] },
+  DWG: { extensions: ["dwg", "dst"] },
   PDF: { extensions: ["pdf"] },
   BOM: { extensions: ["xlsx"] },
   MAN: { extensions: ["pdf"] },
   INF: { extensions: ["xlsx"] }
+};
+
+// 自动生成的 BOM/INF 固定描述段（≤8 字，无下划线）
+const AUTO_DELIVERY_DESCRIPTIONS = {
+  BOM: "材料清单",
+  INF: "项目信息"
 };
 
 function escapeRegExp(value) {
@@ -144,9 +151,44 @@ function deliveryTypeCode(fileName) {
   return String(fileName || "").match(/_(EFF|RND|SKP|DWG|PDF|BOM|MAN|INF)_/)?.[1] || "";
 }
 
+// 描述段清洗：取上传文件名去扩展名，去空格/全角/括号/路径字符，禁下划线，≤8 字
+function sanitizeDeliveryDescription(rawName) {
+  const base = String(rawName || "").replace(/\.[^.]+$/, "");
+  let s = base
+    .replace(/[\s()（）\u3000-\u303f\uff00-\uffef\\/:*?"<>|\x00-\x1f]/g, "")
+    .replace(/_/g, "-");
+  if (!s) s = "文件";
+  const chars = Array.from(s);
+  return chars.length > 8 ? chars.slice(0, 8).join("") : s;
+}
+
+// 六段定式命名器：模板号_类型码_[序号_]描述_vX.Y.扩展名
+function buildDeliveryFileName({ templateCode, typeCode, description, version, seq = "", ext }) {
+  const desc = sanitizeDeliveryDescription(description);
+  const ver = normalizeVersion(version);
+  const extClean = String(ext || "").replace(/^\./, "").toLowerCase();
+  const seqPart = seq ? `${String(seq).padStart(2, "0")}_` : "";
+  return `${templateCode}_${typeCode}_${seqPart}${desc}_${ver}.${extClean}`;
+}
+
+// 自动汇总八类件交付文件清单（SKP + EFF/RND 图片 + DWG/PDF/MAN 附件 + 自动生成的 BOM/INF）
+function buildDeliveryFileList(template) {
+  const code = template.template_code;
+  const list = [];
+  if (template.skp_delivery_name) list.push(template.skp_delivery_name);
+  for (const asset of template.visual_assets || []) list.push(asset.file_name);
+  for (const asset of template.delivery_assets || []) {
+    if (["dwg", "pdf", "man"].includes(asset.kind)) list.push(asset.file_name);
+  }
+  const ver = normalizeVersion(template.version);
+  list.push(`${code}_BOM_${AUTO_DELIVERY_DESCRIPTIONS.BOM}_${ver}.xlsx`);
+  list.push(`${code}_INF_${AUTO_DELIVERY_DESCRIPTIONS.INF}_${ver}.xlsx`);
+  return [...new Set(list)];
+}
+
 function validatePublishReadiness(template, { uploadsDir = DEFAULT_UPLOADS_DIR } = {}) {
   const errors = [];
-  const files = normalizeDeliveryFileList(template.delivery_file_list);
+  const files = buildDeliveryFileList(template);
   const assets = template.delivery_assets || [];
   const visualAssets = template.visual_assets || [];
   const photoImages = template.photo_images || [];
@@ -290,7 +332,7 @@ function validatePublishReadiness(template, { uploadsDir = DEFAULT_UPLOADS_DIR }
 
   for (const fileName of files) {
     const typeCode = deliveryTypeCode(fileName);
-    if (["DWG", "PDF", "BOM", "MAN", "INF"].includes(typeCode)) {
+    if (["DWG", "PDF", "MAN"].includes(typeCode)) {
       const kind = typeCode.toLowerCase();
       if (!assets.some((asset) => asset.kind === kind && asset.file_name === fileName)) {
         errors.push(`交付清单中的 ${typeCode} 文件尚未实际上传：${fileName}`);
@@ -316,9 +358,14 @@ function validatePublishReadiness(template, { uploadsDir = DEFAULT_UPLOADS_DIR }
 
 module.exports = {
   DELIVERY_TYPE_RULES,
+  AUTO_DELIVERY_DESCRIPTIONS,
   normalizeDeliveryFileList,
   isValidDateText,
   validateDeliveryFileName,
+  sanitizeDeliveryDescription,
+  buildDeliveryFileName,
+  buildDeliveryFileList,
+  deliveryTypeCode,
   listDeliveryAssets,
   listVisualAssets,
   addVisualAsset,

@@ -1274,6 +1274,7 @@ function renderGalleryPoster(t) {
       <div class="gallery-poster-overlay" aria-hidden="true">
         <button type="button" class="btn gallery-overlay-btn" data-download-png="${t.id}">下载图片</button>
         <button type="button" class="btn primary gallery-overlay-btn" data-download-pdf="${t.id}">下载手册</button>
+        <button type="button" class="btn gallery-overlay-btn" data-download-package="${t.id}">下载交付包</button>
         ${csvBtn}
       </div>
     </div>
@@ -1367,6 +1368,23 @@ function bindGalleryPosterActions(items) {
       }
     });
   });
+
+  document.querySelectorAll("[data-download-package]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const t = byId[btn.dataset.downloadPackage];
+      if (!t) return;
+      btn.disabled = true;
+      try {
+        await downloadDeliveryPackage(t.id, t.template_code, t.name);
+        toast("交付包已下载");
+      } catch (err) {
+        toast(err.message || "交付包下载失败", true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 let html2canvasLoadPromise = null;
@@ -1426,6 +1444,17 @@ async function downloadPublicSheetPdf(templateId, templateCode) {
 
 async function downloadInternalSheetCsv(templateId, templateCode) {
   await downloadExport(`/api/templates/${templateId}/internal-sheet.csv`, `${templateCode}_清单.csv`);
+}
+
+async function downloadDeliveryPackage(templateId, templateCode, templateName) {
+  const res = await fetch(`/api/templates/${templateId}/delivery-package.zip`, { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || res.statusText || "交付包下载失败");
+  }
+  const blob = await res.blob();
+  const safeName = String(templateName || "").replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim() || templateCode;
+  triggerBlobDownload(blob, `${templateCode} ${safeName} 交付包.zip`);
 }
 
 let jsZipLoadPromise = null;
@@ -1580,7 +1609,7 @@ function renderDeliveryDropZones() {
 
 function renderDeliveryAssetList(t) {
   const assets = t.delivery_assets || [];
-  if (!assets.length) return '<p class="hint">尚未上传 DWG、PDF、BOM、MAN、INF 附件。</p>';
+  if (!assets.length) return '<p class="hint">尚未上传 DWG、PDF、MAN 附件。</p>';
   const canDelete = canEditTemplateContent(t);
   const rows = assets.map((asset) => {
     const definition = meta.deliveryFileKinds?.[asset.kind];
@@ -1995,6 +2024,16 @@ async function renderDetail(t) {
       <div class="detail-section detail-section--full">
         <label class="field-stacked">一句话卖点<input id="d-liner" value="${escapeAttr(t.one_liner)}" /></label>
       </div>
+      <div class="detail-section detail-section--grid2">
+        <label>部署环境<input id="d-deploy-env" value="${escapeAttr(t.deploy_env || "")}" placeholder="室内 / 室外 / 公园街区" /></label>
+        <label>面积区间<input id="d-area-range" value="${escapeAttr(t.area_range || "")}" placeholder="如 6–12㎡" /></label>
+        <label>第一购买理由<input id="d-first-buying-reason" value="${escapeAttr(t.first_buying_reason || "")}" placeholder="视觉传播 / 运营复用 / 跨境部署" /></label>
+        <label>源模板<input id="d-source-template" value="${escapeAttr(t.source_template || "")}" placeholder="复用来源模板号，可空" /></label>
+        <label>关联项目 PRJ<input id="d-related-prj" value="${escapeAttr(t.related_prj || "")}" placeholder="PRJ-2026-012" /></label>
+      </div>
+      <div class="detail-section detail-section--full">
+        <label class="field-stacked">台账备注<textarea id="d-ledger-note" rows="2" placeholder="判归依据、变更记录等">${escapeHtml(t.ledger_note || "")}</textarea></label>
+      </div>
       ${legacyPanelNote}
       <div class="detail-section detail-section--full">
         <label class="field-stacked">报价口径<textarea id="d-quote-note" rows="2">${escapeHtml(t.quote_note)}</textarea></label>
@@ -2019,14 +2058,17 @@ async function renderDetail(t) {
 
     <div class="card detail-form">
       <h3>交付与发布</h3>
-      <p class="hint">整包价为对外报价基准。安装工时只填人·h 总量。交付文件清单每行一个文件名，须包含扩展名。</p>
+      <p class="hint">整包价为对外报价基准。安装工时只填人·h 总量。交付文件清单由系统按已上传附件与自动生成的 BOM/INF 汇总，无需手填。</p>
       <div class="detail-section detail-section--grid3">
         <label>整包价含税<input id="d-package-price" type="number" min="0" step="0.01" value="${t.package_price ?? ""}" /></label>
         <label>价格基准日<input id="d-price-basis-date" type="date" value="${escapeAttr(t.price_basis_date || "")}" /></label>
         <label>安装工时（人·h）<input id="d-installation-hours" type="number" min="0" step="0.5" value="${t.installation_hours ?? ""}" /></label>
       </div>
       <div class="detail-section detail-section--full">
-        <label class="field-stacked">交付文件清单<textarea id="d-delivery-file-list" rows="8" placeholder="TPL-SHW-001_DWG_加工图纸_v1.0.dwg">${escapeHtml((t.delivery_file_list || []).join("\n"))}</textarea></label>
+        <label class="field-stacked">交付文件清单（自动汇总）<pre class="delivery-file-list-view" id="delivery-file-list-view">${escapeHtml((t.delivery_file_list || []).join("\n") || "（暂无，上传附件后自动生成）")}</pre></label>
+      </div>
+      <div class="detail-section detail-section--full">
+        <button type="button" class="btn primary" id="download-delivery-package">下载交付包（zip）</button>
       </div>
       <div class="detail-section detail-section--full">
         <label class="checkbox-chip${t.eff_rnd_merged ? " is-checked" : ""}">
@@ -2073,8 +2115,8 @@ async function renderDetail(t) {
           <input type="file" accept=".skp" hidden />
         </div>
       </div>
-      <h4>交付文件附件</h4>
-      <p class="hint">系统内文件由程序自动命名。EFF/RND/SKP 与五类附件的原始交付文件名须符合六段定式，用于核对交付文件清单。</p>
+      <h4>交付文件附件（DWG / PDF / MAN）</h4>
+      <p class="hint">BOM 表与项目基本信息由系统在下载交付包时自动生成，无需上传。上传的附件将按六段定式自动重命名归档，并自动汇总进交付文件清单。</p>
       <div class="detail-drop-zones">${renderDeliveryDropZones()}</div>
       <div id="delivery-asset-list">${renderDeliveryAssetList(t)}</div>
       <div id="detail-cover-info">${t.cover_image ? `<p class="hint">当前封面：<a href="${t.cover_image}" target="_blank"><img src="${t.cover_image}" alt="" class="cover-thumb" /></a></p>` : ""}</div>
@@ -2206,6 +2248,18 @@ async function renderDetail(t) {
 
   document.getElementById("save-detail")?.addEventListener("click", () => saveDetail(t.id, t.status));
   document.getElementById("save-delivery")?.addEventListener("click", () => saveDetail(t.id, t.status));
+  document.getElementById("download-delivery-package")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await downloadDeliveryPackage(t.id, t.template_code, t.name);
+      toast("交付包已下载");
+    } catch (err) {
+      toast(err.message || "交付包下载失败", true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
   bindDeliveryAssetDeletes(t);
   bindVisualAssetDeletes(t);
   bindDetailTagEditor();
@@ -2811,11 +2865,16 @@ async function saveDetail(id, templateStatus) {
       package_price: numOrNull(document.getElementById("d-package-price").value),
       price_basis_date: document.getElementById("d-price-basis-date").value,
       installation_hours: numOrNull(document.getElementById("d-installation-hours").value),
-      delivery_file_list: document.getElementById("d-delivery-file-list").value.split(/\r?\n/),
       eff_rnd_merged: document.getElementById("d-eff-rnd-merged").checked,
       delivery_note: document.getElementById("d-delivery-note").value,
       skin_upgrade_enabled: document.getElementById("d-skin-upgrade").checked,
       internal_note: document.getElementById("d-note").value,
+      deploy_env: document.getElementById("d-deploy-env").value,
+      area_range: document.getElementById("d-area-range").value,
+      first_buying_reason: document.getElementById("d-first-buying-reason").value,
+      source_template: document.getElementById("d-source-template").value,
+      related_prj: document.getElementById("d-related-prj").value,
+      ledger_note: document.getElementById("d-ledger-note").value,
       tags: [...detailTemplateTags]
     };
     const coverSel = document.getElementById("d-cover-source");
@@ -2941,6 +3000,10 @@ async function refreshDetailAssets(id) {
   if (renderGal) renderGal.innerHTML = renderImageGallery(t.render_images, { kind: "render", editable: canEditTemplateContent(t) });
   const deliveryList = document.getElementById("delivery-asset-list");
   if (deliveryList) deliveryList.innerHTML = renderDeliveryAssetList(t);
+  const fileListView = document.getElementById("delivery-file-list-view");
+  if (fileListView) {
+    fileListView.textContent = (t.delivery_file_list || []).join("\n") || "（暂无，上传附件后自动生成）";
+  }
   bindDeliveryAssetDeletes(t);
   bindVisualAssetDeletes(t);
 

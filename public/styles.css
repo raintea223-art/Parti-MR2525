@@ -1627,6 +1627,20 @@ tfoot td {
   width: 100%;
 }
 
+.delivery-file-list-view {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  font-family: var(--font-mono, "SF Mono", "Consolas", ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink-soft, #d6d6d6);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .detail-legacy-note {
   padding: var(--s-md);
   background: var(--surface-2, #f6f7f9);

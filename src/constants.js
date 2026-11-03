@@ -40,12 +40,23 @@ const IMAGE_KINDS = {
   render: { folder: "渲染图", label: "渲染图", required: false }
 };
 
+// 可上传的交付附件（BOM/INF 由系统在下载交付包时自动生成，不再手动上传）
 const DELIVERY_FILE_KINDS = {
-  dwg: { folder: "加工图纸", label: "DWG 加工图", typeCode: "DWG", extensions: [".dwg"], accept: ".dwg" },
+  dwg: { folder: "加工图纸", label: "DWG 加工图 / 图纸集", typeCode: "DWG", extensions: [".dwg", ".dst"], accept: ".dwg,.dst" },
   pdf: { folder: "加工图PDF", label: "PDF 加工图", typeCode: "PDF", extensions: [".pdf"], accept: ".pdf" },
-  bom: { folder: "BOM表", label: "BOM 表", typeCode: "BOM", extensions: [".xlsx"], accept: ".xlsx" },
-  man: { folder: "交付说明书", label: "交付说明书", typeCode: "MAN", extensions: [".pdf"], accept: ".pdf" },
-  inf: { folder: "基本信息", label: "项目基本信息", typeCode: "INF", extensions: [".xlsx"], accept: ".xlsx" }
+  man: { folder: "交付说明书", label: "交付说明书", typeCode: "MAN", extensions: [".pdf"], accept: ".pdf" }
+};
+
+// 八类件完整类型定义（含自动生成的 BOM/INF），用于命名、校验与交付包打包
+const DELIVERY_TYPE_CODES = {
+  EFF: { label: "效果图", extensions: [".jpg", ".png"] },
+  RND: { label: "渲染图", extensions: [".jpg", ".png"] },
+  SKP: { label: "SKP 模型", extensions: [".skp"] },
+  DWG: { label: "DWG 加工图", extensions: [".dwg", ".dst"] },
+  PDF: { label: "PDF 加工图", extensions: [".pdf"] },
+  BOM: { label: "BOM 表", extensions: [".xlsx"] },
+  MAN: { label: "交付说明书", extensions: [".pdf"] },
+  INF: { label: "项目基本信息", extensions: [".xlsx"] }
 };
 
 const SCENARIO_CLASSIFICATION_RULES = [
@@ -124,6 +135,7 @@ module.exports = {
   STATUS_FLOW,
   IMAGE_KINDS,
   DELIVERY_FILE_KINDS,
+  DELIVERY_TYPE_CODES,
   SCENARIO_CLASSIFICATION_RULES,
   AUDIT_CHECKLIST,
   BOM_CATEGORIES,
