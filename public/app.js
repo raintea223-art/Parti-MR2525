@@ -188,6 +188,17 @@ function fmtMoney(n) {
   return "¥" + Number(n).toLocaleString("zh-CN", { maximumFractionDigits: 0 });
 }
 
+// 数据库时间字段存的是 UTC（SQLite datetime('now') 产出 "YYYY-MM-DD HH:MM:SS"），
+// 前端展示时按浏览器本地时区转换（立哥为 GMT+8），否则会显示得比实际早 8 小时。
+function fmtLocalTime(utcStr) {
+  if (!utcStr) return "—";
+  const s = String(utcStr).trim();
+  const d = new Date(s.replace(" ", "T") + "Z");
+  if (isNaN(d.getTime())) return s.slice(0, 16);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function fmtPackagePrice(t) {
   const price = fmtMoney(t.package_price);
   return t.price_basis_date ? `${price}（含税 · ${t.price_basis_date}）` : `${price}（含税）`;
@@ -1102,7 +1113,7 @@ async function loadList() {
         <td><span class="badge ${t.status}">${meta.statusLabels[t.status]}</span></td>
         <td>${fmtMoney(t.price_min)}${t.price_max !== t.price_min ? " – " + fmtMoney(t.price_max) : ""}</td>
         <td>${escapeHtml(t.assignee || "—")}</td>
-        <td>${(t.updated_at || "").slice(0, 16)}</td>
+        <td>${fmtLocalTime(t.updated_at)}</td>
         ${showDelete ? (canDeleteTemplate(t) ? `<td><button type="button" class="btn danger" data-del-template="${t.id}" data-code="${escapeAttr(t.template_code)}" data-name="${escapeAttr(t.name)}">删除</button></td>` : '<td></td>') : ""}
       </tr>`
       )
@@ -3747,7 +3758,7 @@ function renderPriceForm(category, extra = {}) {
         <label>试算长度(in)<input id="profile-formula-preview-len" type="number" step="0.1" placeholder="如 31.1" /></label>
         <input id="profile-formula-preview-out" readonly placeholder="自动计算" />
       </div>
-      ${formula.updated_at ? `<p class="hint">最后更新：${formula.updated_at.slice(0, 16)}${formula.updated_by ? " · " + escapeHtml(formula.updated_by) : ""}</p>` : ""}
+      ${formula.updated_at ? `<p class="hint">最后更新：${fmtLocalTime(formula.updated_at)}${formula.updated_by ? " · " + escapeHtml(formula.updated_by) : ""}</p>` : ""}
       <h4 class="profile-colors-heading">型材颜色</h4>
       ${canManagePrices() ? `<form id="profile-color-add-form" class="hardware-add profile-color-add">
         <label>颜色名称<input name="name" required placeholder="如 黑色" maxlength="32" /></label>
