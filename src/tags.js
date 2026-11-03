@@ -48,16 +48,20 @@ function getOrCreateTag(db, name) {
 }
 
 /**
+ * 同步模板标签。
+ * transaction 参数用于嵌套复用：调用方若已开启事务，必须传 false，
+ * 否则 SQLite 会抛 "cannot start a transaction within a transaction"。
+ *
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {number} templateId
  * @param {string[]} tagNames
+ * @param {{ touchTemplate?: boolean, transaction?: boolean }} options
  */
-function syncTemplateTags(db, templateId, tagNames, { touchTemplate = true } = {}) {
-  const normalized = [...new Set(tagNames.map(normalizeTagName).filter(Boolean))];
+function syncTemplateTags(db, templateId, tagNames, { touchTemplate = true, transaction = true } = {}) {
+  const normalized = [...new Set((tagNames || []).map(normalizeTagName).filter(Boolean))];
   const tagIds = normalized.map((n) => getOrCreateTag(db, n).id);
 
-  db.exec("BEGIN");
-  try {
+  const writeTags = () => {
     db.prepare("DELETE FROM template_tags WHERE template_id = ?").run(templateId);
     const insert = db.prepare("INSERT INTO template_tags (template_id, tag_id) VALUES (?, ?)");
     for (const tagId of tagIds) {
@@ -71,6 +75,16 @@ function syncTemplateTags(db, templateId, tagNames, { touchTemplate = true } = {
     } else {
       db.prepare("UPDATE templates SET tags = ? WHERE id = ?").run(JSON.stringify(normalized), templateId);
     }
+  };
+
+  if (!transaction) {
+    writeTags();
+    return normalized;
+  }
+
+  db.exec("BEGIN");
+  try {
+    writeTags();
     db.exec("COMMIT");
   } catch (e) {
     db.exec("ROLLBACK");

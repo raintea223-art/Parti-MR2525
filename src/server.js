@@ -1022,7 +1022,8 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
   try {
     if ("tags" in req.body) {
       const names = Array.isArray(req.body.tags) ? req.body.tags : [];
-      syncTemplateTags(db, req.params.id, names);
+      // 已在外层事务中，必须关闭内层事务，避免 SQLite 嵌套事务报错
+      syncTemplateTags(db, req.params.id, names, { transaction: false });
     }
     if (sets.length > 1) {
       db.prepare(`UPDATE templates SET ${sets.join(", ")} WHERE id = ?`).run(...values);

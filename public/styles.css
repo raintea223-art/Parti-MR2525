@@ -1787,6 +1787,36 @@ tfoot td {
   margin-top: var(--s-xs);
 }
 
+/* —— 草稿自动保存状态 —— */
+.draft-status {
+  align-self: center;
+  font-size: 12px;
+  color: var(--ink-muted);
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  white-space: nowrap;
+}
+
+.draft-status.is-saving {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+.draft-status.is-saved {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.draft-status.is-error {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
 @media (max-width: 720px) {
   .detail-section--grid3,
   .detail-section--grid2 {

@@ -784,7 +784,8 @@ function applyDeepeningForm(db, template, payload, user) {
       templateId
     );
 
-    syncTemplateTags(db, templateId, b.tags || []);
+    // 已在外层事务中，关闭内层事务并避免二次刷新 updated_at
+    syncTemplateTags(db, templateId, b.tags || [], { transaction: false, touchTemplate: false });
 
     const insProfile = db.prepare(
       `INSERT INTO quote_profiles (template_id, length_inch, qty, coefficient, color, note, sort_order)

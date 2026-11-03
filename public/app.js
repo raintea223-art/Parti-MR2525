@@ -864,6 +864,7 @@ function renderDetailTagPills() {
     btn.addEventListener("click", () => {
       detailTemplateTags = detailTemplateTags.filter((n) => n !== btn.dataset.removeTag);
       renderDetailTagPills();
+      scheduleDraftSave();
     });
   });
 }
@@ -877,6 +878,7 @@ function addDetailTag(name) {
   }
   detailTemplateTags.push(n);
   renderDetailTagPills();
+  scheduleDraftSave();
   return true;
 }
 
@@ -1573,6 +1575,10 @@ function escapeHtml(s) {
 }
 
 async function openDetail(id) {
+  // 切换模板前，先把上一个模板未保存的草稿落库，避免改动丢失
+  if (draftState.templateId && draftState.templateId !== Number(id) && draftState.dirty) {
+    await flushDraftSave();
+  }
   currentDetailId = id;
   switchView("detail");
   document.getElementById("view-detail").classList.add("active");
@@ -1993,6 +1999,7 @@ async function renderDetail(t) {
       <div class="summary-row">
         <div>整包价 <strong>${fmtPackagePrice(t)}</strong></div>
         <div>内部参考价 <strong>${fmtMoney(t.price_min)} – ${fmtMoney(t.price_max)}</strong></div>
+        ${canEditTemplateContent(t) ? '<div class="draft-status" id="detail-draft-status" title="输入框停止输入约 1.5 秒后自动保存；也可点「立即保存」">草稿自动保存已开启</div>' : ""}
       </div>
     </div>
 
@@ -2069,7 +2076,10 @@ async function renderDetail(t) {
         <label class="field-stacked">内部备注<textarea id="d-note" rows="2">${escapeHtml(t.internal_note)}</textarea></label>
       </div>
       ${canWrite() ? renderDetailTagField() : renderDetailTagReadonly(t.tags)}
-      <div class="form-actions"><button type="button" class="btn primary" id="save-detail">${isPublishedLocked ? "保存标签" : "保存基本信息"}</button></div>
+      <div class="form-actions">
+        ${isPublishedLocked ? "" : '<button type="button" class="btn" id="save-draft-now" title="无需手动点，停手 1.5 秒会自动保存">立即保存草稿</button>'}
+        <button type="button" class="btn primary" id="save-detail">${isPublishedLocked ? "保存标签" : "保存基本信息"}</button>
+      </div>
     </div>
 
     <div class="card detail-form">
@@ -2264,6 +2274,14 @@ async function renderDetail(t) {
 
   document.getElementById("save-detail")?.addEventListener("click", () => saveDetail(t.id, t.status));
   document.getElementById("save-delivery")?.addEventListener("click", () => saveDetail(t.id, t.status));
+  document.getElementById("save-draft-now")?.addEventListener("click", async () => {
+    await flushDraftSave({ manual: true });
+    if (!draftState.dirty) toast("草稿已保存");
+  });
+  // 草稿自动保存：每次进入详情重置基线，仅未发布可编辑时启用
+  resetDraftState(t.id);
+  if (canEditTemplateContent(t)) bindDraftAutoSave(t);
+  else if (draftState.bound) draftState.templateId = null;
   document.getElementById("download-delivery-package")?.addEventListener("click", async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
@@ -2854,6 +2872,170 @@ function bindLinkResolver(input) {
     } catch {
       /* ignore */
     }
+  });
+}
+
+// —— 详情页草稿自动保存 ——
+// 逐字段收集表单值；字段缺失（未渲染）时跳过，避免覆盖已有值
+const DRAFT_FIELD_READERS = {
+  name: () => document.getElementById("d-name")?.value,
+  assignee: () => document.getElementById("d-assignee")?.value,
+  width_mm: () => numOrNull(document.getElementById("d-w")?.value ?? ""),
+  depth_mm: () => numOrNull(document.getElementById("d-d")?.value ?? ""),
+  height_mm: () => numOrNull(document.getElementById("d-h")?.value ?? ""),
+  one_liner: () => document.getElementById("d-liner")?.value,
+  quote_note: () => document.getElementById("d-quote-note")?.value,
+  price_override_min: () => numOrNull(document.getElementById("d-price-min")?.value ?? ""),
+  price_override_max: () => numOrNull(document.getElementById("d-price-max")?.value ?? ""),
+  package_price: () => numOrNull(document.getElementById("d-package-price")?.value ?? ""),
+  price_basis_date: () => document.getElementById("d-price-basis-date")?.value,
+  installation_hours: () => numOrNull(document.getElementById("d-installation-hours")?.value ?? ""),
+  eff_rnd_merged: () => document.getElementById("d-eff-rnd-merged")?.checked,
+  delivery_note: () => document.getElementById("d-delivery-note")?.value,
+  skin_upgrade_enabled: () => document.getElementById("d-skin-upgrade")?.checked,
+  internal_note: () => document.getElementById("d-note")?.value,
+  deploy_env: () => document.getElementById("d-deploy-env")?.value,
+  area_range: () => document.getElementById("d-area-range")?.value,
+  first_buying_reason: () => document.getElementById("d-first-buying-reason")?.value,
+  source_template: () => document.getElementById("d-source-template")?.value,
+  related_prj: () => document.getElementById("d-related-prj")?.value,
+  ledger_note: () => document.getElementById("d-ledger-note")?.value,
+  cover_source: () => document.getElementById("d-cover-source")?.value
+};
+
+const draftState = {
+  timer: null,
+  saving: false,
+  dirty: false,
+  pending: false,
+  templateId: null,
+  baseline: "",
+  lastSavedAt: null,
+  bound: false
+};
+
+const DRAFT_DELAY_MS = 1500;
+
+function collectDraftPayload() {
+  const body = {};
+  for (const [key, reader] of Object.entries(DRAFT_FIELD_READERS)) {
+    const value = reader();
+    if (value !== undefined) body[key] = value;
+  }
+  if (typeof detailTemplateTags !== "undefined") body.tags = [...detailTemplateTags];
+  return body;
+}
+
+function draftSignature(body) {
+  return JSON.stringify(body);
+}
+
+function setDraftStatus(text, kind = "") {
+  const el = document.getElementById("detail-draft-status");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("is-saving", "is-saved", "is-error");
+  if (kind) el.classList.add(kind);
+}
+
+function scheduleDraftSave(delay = DRAFT_DELAY_MS) {
+  if (!draftState.templateId) return;
+  draftState.dirty = true;
+  setDraftStatus("未保存的修改…", "is-saving");
+  clearTimeout(draftState.timer);
+  draftState.timer = setTimeout(() => {
+    flushDraftSave();
+  }, delay);
+}
+
+async function flushDraftSave({ manual = false } = {}) {
+  clearTimeout(draftState.timer);
+  draftState.timer = null;
+  if (!draftState.templateId) return;
+  if (draftState.saving) {
+    draftState.pending = true;
+    return;
+  }
+  if (!draftState.dirty && !manual) return;
+
+  const body = collectDraftPayload();
+  const signature = draftSignature(body);
+  if (signature === draftState.baseline) {
+    draftState.dirty = false;
+    setDraftStatus(draftState.lastSavedAt ? `已自动保存 ${draftState.lastSavedAt}` : "无修改", "is-saved");
+    return;
+  }
+
+  draftState.saving = true;
+  setDraftStatus("保存中…", "is-saving");
+  try {
+    const updated = await api(`/api/templates/${draftState.templateId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    });
+    draftState.baseline = signature;
+    draftState.dirty = false;
+    draftState.lastSavedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false }).slice(0, 5);
+    setDraftStatus(`已自动保存 ${draftState.lastSavedAt}`, "is-saved");
+    // 不在自动保存后整页重渲染，避免打断正在输入的光标；仅刷新清单类只读区域
+    if (updated) {
+      const fileListView = document.getElementById("delivery-file-list-view");
+      if (fileListView) {
+        fileListView.textContent = (updated.delivery_file_list || []).join("\n") || "（暂无，上传附件后自动生成）";
+      }
+    }
+  } catch (e) {
+    draftState.dirty = true;
+    setDraftStatus("保存失败：" + (e.message || "未知错误"), "is-error");
+    if (manual) toast(e.message, true);
+  } finally {
+    draftState.saving = false;
+    if (draftState.pending) {
+      draftState.pending = false;
+      scheduleDraftSave(300);
+    }
+  }
+}
+
+function resetDraftState(templateId, initialPayload = null) {
+  clearTimeout(draftState.timer);
+  draftState.timer = null;
+  draftState.templateId = templateId;
+  draftState.saving = false;
+  draftState.pending = false;
+  draftState.dirty = false;
+  draftState.lastSavedAt = null;
+  const payload = initialPayload || collectDraftPayload();
+  draftState.baseline = draftSignature(payload);
+}
+
+function bindDraftAutoSave(template) {
+  if (draftState.bound) return;
+  draftState.bound = true;
+
+  const root = document.getElementById("detail-root");
+  if (!root) return;
+
+  const handler = (e) => {
+    const el = e.target;
+    if (!el || !el.id || !/^d-/.test(el.id)) return;
+    if (e.type === "input" && el.type === "checkbox") return;
+    scheduleDraftSave(el.tagName === "INPUT" && el.type === "text" ? DRAFT_DELAY_MS : DRAFT_DELAY_MS);
+  };
+
+  root.addEventListener("input", handler);
+  root.addEventListener("change", (e) => {
+    const el = e.target;
+    if (el?.id === "d-cover-source") {
+      scheduleDraftSave(0);
+      return;
+    }
+    handler(e);
+  });
+
+  // 离开页面前把没存完的立刻落库
+  window.addEventListener("beforeunload", () => {
+    if (draftState.dirty) flushDraftSave();
   });
 }
 
