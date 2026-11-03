@@ -56,7 +56,14 @@ foreach ($item in $Include) {
     Write-Host "Skip missing: $item" -ForegroundColor Yellow
     continue
   }
-  Copy-Item -Path $src -Destination (Join-Path $DestUnc $item) -Recurse -Force
+  $dest = Join-Path $DestUnc $item
+  if ((Get-Item $src).PSIsContainer) {
+    # 目录：先删除目标，避免 Copy-Item -Recurse 在已存在目录上嵌套复制成 src/src、public/public
+    if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+    Copy-Item -Path $src -Destination $dest -Recurse -Force
+  } else {
+    Copy-Item -Path $src -Destination $dest -Force
+  }
 }
 
 $HandbookSrc = Join-Path $ProjectRoot "data\handbook"
