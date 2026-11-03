@@ -1040,9 +1040,13 @@ app.patch("/api/templates/:id", ...writeAuth, (req, res) => {
   }
 });
 
-app.delete("/api/templates/:id", ...adminAuth, (req, res) => {
-  const row = db.prepare("SELECT id, template_code FROM templates WHERE id = ?").get(req.params.id);
+app.delete("/api/templates/:id", ...writeAuth, (req, res) => {
+  const row = db.prepare("SELECT id, template_code, status FROM templates WHERE id = ?").get(req.params.id);
   if (!row) return res.status(404).json({ error: "模板不存在" });
+
+  if (row.status === "published" || row.status === "archived") {
+    return res.status(403).json({ error: "已发布/已下架的模板不可删除；如需删除请先下架" });
+  }
 
   db.exec("BEGIN");
   try {

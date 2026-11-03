@@ -133,6 +133,11 @@ function canEditTemplateContent(template) {
   return canWrite() && template?.status !== "published";
 }
 
+// 仅未发布状态的模板可删除；已发布/已下架不可删（需先下架）
+function canDeleteTemplate(template) {
+  return template?.status !== "published" && template?.status !== "archived";
+}
+
 function canChangeTemplateStatus(templateStatus) {
   if (templateStatus === "published") return canWrite();
   if (currentUser?.role === "admin") return true;
@@ -1073,7 +1078,7 @@ async function loadList() {
   }
 
   const sorted = sortTemplateRows(items, listSort.field, listSort.dir);
-  const showDelete = canAdmin();
+  const showDelete = canWrite();
   wrap.innerHTML = `<table class="template-list-table">
     <thead><tr>
       <th class="seq-col">#</th>
@@ -1098,7 +1103,7 @@ async function loadList() {
         <td>${fmtMoney(t.price_min)}${t.price_max !== t.price_min ? " – " + fmtMoney(t.price_max) : ""}</td>
         <td>${escapeHtml(t.assignee || "—")}</td>
         <td>${(t.updated_at || "").slice(0, 16)}</td>
-        ${showDelete ? `<td><button type="button" class="btn danger" data-del-template="${t.id}" data-code="${escapeAttr(t.template_code)}" data-name="${escapeAttr(t.name)}">删除</button></td>` : ""}
+        ${showDelete ? (canDeleteTemplate(t) ? `<td><button type="button" class="btn danger" data-del-template="${t.id}" data-code="${escapeAttr(t.template_code)}" data-name="${escapeAttr(t.name)}">删除</button></td>` : '<td></td>') : ""}
       </tr>`
       )
       .join("")}</tbody></table>`;
@@ -1113,7 +1118,7 @@ async function loadList() {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const id = Number(btn.dataset.delTemplate);
-      const msg = `确定删除模板 ${btn.dataset.code}「${btn.dataset.name}」？\n此操作不可恢复，关联数据与上传文件将一并清除。`;
+      const msg = `确定删除模板 ${btn.dataset.code}「${btn.dataset.name}」？\n此操作不可恢复，关联数据与上传文件将一并清除；删除后该模板编号将退回可用。`;
       if (!confirm(msg)) return;
       try {
         await api(`/api/templates/${id}`, { method: "DELETE" });
