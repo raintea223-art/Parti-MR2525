@@ -3,163 +3,267 @@ const path = require("path");
 const AdmZip = require("adm-zip");
 const { buildDeliveryFileName } = require("./delivery");
 const { normalizeVersion } = require("./version");
-const { SCENARIO_MAP } = require("./constants");
+const { SCENARIO_MAP, STATUS_LABELS } = require("./constants");
+const { renderStyledXlsx, S } = require("./xlsx-styled");
 
 const UPLOADS_DIR = path.join(__dirname, "..", "data", "uploads");
 
-// ── 最小 xlsx 生成器（手写 OOXML + adm-zip，无第三方 xlsx 依赖）──
+const TYPE_LABELS = {
+  EFF: "效果图",
+  RND: "渲染图",
+  SKP: "SKP 模型",
+  DWG: "加工图纸",
+  PDF: "加工图 PDF",
+  BOM: "BOM 表",
+  MAN: "交付说明书",
+  INF: "项目信息"
+};
 
-function xmlEscape(value) {
-  return String(value == null ? "" : value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+// ── 通用排版工具 ──
+
+function text(value) {
+  const s = String(value == null ? "" : value).trim();
+  return s || "—";
 }
-
-function colName(index) {
-  let n = index + 1;
-  let s = "";
-  while (n > 0) {
-    const m = (n - 1) % 26;
-    s = String.fromCharCode(65 + m) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-function buildCell(ref, value) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return `<c r="${ref}"><v>${value}</v></c>`;
-  }
-  return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
-}
-
-function buildSheetXml(rows) {
-  const body = rows
-    .map((row, r) => {
-      const cells = row.map((v, c) => buildCell(`${colName(c)}${r + 1}`, v)).join("");
-      return `<row r="${r + 1}">${cells}</row>`;
-    })
-    .join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
-}
-
-function buildXlsxBuffer(sheetName, rows) {
-  const zip = new AdmZip();
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
-  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>`;
-
-  zip.addFile("[Content_Types].xml", Buffer.from(contentTypes, "utf8"));
-  zip.addFile("_rels/.rels", Buffer.from(rootRels, "utf8"));
-  zip.addFile("xl/workbook.xml", Buffer.from(workbookXml, "utf8"));
-  zip.addFile("xl/_rels/workbook.xml.rels", Buffer.from(workbookRels, "utf8"));
-  zip.addFile("xl/worksheets/sheet1.xml", Buffer.from(buildSheetXml(rows), "utf8"));
-  zip.addFile("xl/styles.xml", Buffer.from(stylesXml, "utf8"));
-  return zip.toBuffer();
-}
-
-// ── BOM 表生成 ──
 
 function numOrEmpty(value) {
   const n = Number(value);
-  return Number.isFinite(n) ? n : "";
+  return Number.isFinite(n) && String(value).trim() !== "" ? n : "";
+}
+
+function beijingToday() {
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const pick = (type) => parts.find((p) => p.type === type)?.value || "";
+  return `${pick("year")}-${pick("month")}-${pick("day")}`;
+}
+
+function titleRow(value, colCount) {
+  return { height: 38, cells: [{ v: value, s: S.TITLE, span: colCount }] };
+}
+
+function subtitleRow(value, colCount) {
+  return { height: 25, cells: [{ v: value, s: S.SUBTITLE, span: colCount }] };
+}
+
+function sectionRow(value, colCount) {
+  return { height: 26, cells: [{ v: value, s: S.SECTION, span: colCount }] };
+}
+
+function blankRow(colCount, height = 9) {
+  return { height, cells: Array.from({ length: colCount }, () => ({ v: "", s: S.DEFAULT })) };
+}
+
+function noteRow(value, colCount) {
+  return { height: 20, cells: [{ v: value, s: S.NOTE, span: colCount }] };
+}
+
+// 一行两组「标签 / 值」，用于 5 列的 INF 信息区：A 标签 | B:C 值 | D 标签 | E 值
+function metaPairRow(left, right) {
+  const valueStyle = (item) => (item && item.money ? S.MONEY_PLAIN : S.META_VALUE);
+  return {
+    height: 24,
+    cells: [
+      { v: left.label, s: S.META_LABEL },
+      { v: left.value, s: valueStyle(left), span: 2 },
+      { v: right.label, s: S.META_LABEL },
+      { v: right.value, s: valueStyle(right) }
+    ]
+  };
+}
+
+// 一行一组，值横跨 B:E，用于长文本
+function metaWideRow(label, value) {
+  return {
+    height: 30,
+    cells: [
+      { v: label, s: S.META_LABEL },
+      { v: value, s: S.META_VALUE, span: 4 }
+    ]
+  };
+}
+
+function headerRow(labels, extras = []) {
+  return {
+    height: 28,
+    cells: labels.map((v) => ({ v, s: S.HEADER })).concat(extras)
+  };
+}
+
+// 兼容旧调用：纯二维数组也走带版式的生成器
+function buildXlsxBuffer(sheetName, rows) {
+  const width = Math.max(1, ...rows.map((r) => (r || []).length));
+  return renderStyledXlsx({
+    sheetName,
+    rows: rows.map((r, i) => ({
+      height: i === 0 ? 28 : 20,
+      cells: Array.from({ length: width }, (_, c) => ({
+        v: (r || [])[c] ?? "",
+        s: i === 0 ? S.HEADER : c === 0 ? S.CELL_CENTER : S.CELL
+      }))
+    }))
+  });
+}
+
+// ── BOM 表生成（不含任何价格信息）──
+
+function collectBomItems(template) {
+  const items = [];
+
+  for (const p of template.quote_profiles || []) {
+    items.push({
+      category: "型材",
+      name: p.color ? `${p.color} MR2525 型材` : "MR2525 型材",
+      spec: p.length_inch != null && p.length_inch !== "" ? `长 ${p.length_inch} in` : "—",
+      qty: numOrEmpty(p.qty),
+      unit: "根"
+    });
+  }
+  for (const n of template.quote_nuts || []) {
+    items.push({
+      category: "六通",
+      name: text(n.item_name || n.nut_model || "六通"),
+      spec: text(n.nut_model),
+      qty: numOrEmpty(n.qty),
+      unit: text(n.unit || "个")
+    });
+  }
+  for (const h of template.quote_hardware || []) {
+    items.push({
+      category: "五金配件",
+      name: text(h.item_name),
+      spec: text(h.spec),
+      qty: numOrEmpty(h.qty),
+      unit: text(h.unit || "个")
+    });
+  }
+  for (const p of template.quote_panels || []) {
+    // 板材录入口径：长 / 宽用英寸(in)，厚度用毫米(mm)，原样输出不做换算。
+    const dims =
+      p.length_inch != null && p.width_inch != null && p.length_inch !== "" && p.width_inch !== ""
+        ? `${p.length_inch}×${p.width_inch} in`
+        : "—";
+    const thickness = p.thickness_mm != null && p.thickness_mm !== "" ? `t=${p.thickness_mm}mm` : "";
+    const color = p.color ? ` · ${p.color}` : "";
+    items.push({
+      category: "板材",
+      name: text(p.material_type || p.material_name || "板材"),
+      spec: `${[thickness, dims].filter(Boolean).join(" · ") || "—"}${color}`,
+      qty: numOrEmpty(p.qty),
+      unit: text(p.unit || "块")
+    });
+  }
+  for (const b of template.bom || []) {
+    items.push({
+      category: text(b.category || "其他"),
+      name: text(b.item_name),
+      spec: text(b.spec),
+      qty: numOrEmpty(b.qty),
+      unit: text(b.unit || "个")
+    });
+  }
+
+  return items;
 }
 
 function generateBomXlsx(template) {
-  const header = [
-    ["Parti 模板 BOM 表"],
-    ["模板编号", template.template_code],
-    ["中文名", template.name],
-    ["场景", template.scenario],
-    ["版本", normalizeVersion(template.version)],
-    ["价格基准日", template.price_basis_date || ""],
-    []
-  ];
-
-  const detailHeader = ["类别", "名称 / 型号", "规格", "数量", "单位", "单价(元)", "小计(元)"];
+  const COLS = 6;
+  const code = template.template_code;
+  const ver = normalizeVersion(template.version);
+  const items = collectBomItems(template);
   const rows = [];
 
-  for (const p of template.quote_profiles || []) {
-    rows.push([
-      "型材",
-      p.color ? `${p.color} MR2525` : "MR2525 型材",
-      `长 ${p.length_inch} in`,
-      numOrEmpty(p.qty),
-      "根",
-      numOrEmpty(p.unit_price),
-      numOrEmpty(p.subtotal)
-    ]);
-  }
-  for (const n of template.quote_nuts || []) {
-    rows.push([
-      "六通",
-      n.item_name || n.nut_model || "六通",
-      n.nut_model || "",
-      numOrEmpty(n.qty),
-      n.unit || "个",
-      numOrEmpty(n.unit_price),
-      numOrEmpty(n.subtotal)
-    ]);
-  }
-  for (const h of template.quote_hardware || []) {
-    rows.push([
-      "五金配件",
-      h.item_name || "",
-      h.spec || "",
-      numOrEmpty(h.qty),
-      h.unit || "个",
-      numOrEmpty(h.unit_price),
-      numOrEmpty(h.subtotal)
-    ]);
-  }
-  for (const p of template.quote_panels || []) {
-    rows.push([
-      "板材",
-      p.material_type || p.material_name || "板材",
-      `${p.thickness_mm != null ? p.thickness_mm + "mm" : "—"} ${p.length_mm}×${p.width_mm}mm`,
-      numOrEmpty(p.qty),
-      "块",
-      numOrEmpty(p.unit_price),
-      numOrEmpty(p.subtotal)
-    ]);
-  }
-  for (const b of template.bom || []) {
-    rows.push([
-      b.category || "其他",
-      b.item_name || "",
-      b.spec || "",
-      numOrEmpty(b.qty),
-      b.unit || "",
-      numOrEmpty(b.unit_price),
-      numOrEmpty(b.subtotal)
-    ]);
-  }
+  rows.push(titleRow("Parti 模板 · BOM 材料清单", COLS));
+  rows.push(subtitleRow(`${code} · ${text(template.name)} · ${ver} · 生成日期 ${beijingToday()}`, COLS));
+  rows.push(blankRow(COLS));
 
-  const materialCost = numOrEmpty(template.material_cost);
-  const processAmount = numOrEmpty(template.process_amount);
-  const totalCost =
-    Number.isFinite(Number(materialCost)) && Number.isFinite(Number(processAmount))
-      ? Number(materialCost) + Number(processAmount)
-      : "";
+  rows.push(sectionRow("模板标识", COLS));
+  rows.push(
+    metaPairRow6(
+      { label: "模板编号", value: text(code) },
+      { label: "中文名", value: text(template.name) }
+    )
+  );
+  rows.push(
+    metaPairRow6(
+      { label: "应用场景", value: text(template.scenario) },
+      { label: "版本", value: ver }
+    )
+  );
+  rows.push(
+    metaPairRow6(
+      { label: "物料项数", value: `${items.length} 项` },
+      { label: "单位口径", value: "按录入单位，不换算" }
+    )
+  );
+  rows.push(blankRow(COLS));
 
-  const totals = [
-    ["", "", "", "", "", "物料小计", materialCost],
-    ["", "", "", "", "", "加工费(10%)", processAmount],
-    ["", "", "", "", "", "内部算价合计", totalCost]
-  ];
+  rows.push(sectionRow("材料明细", COLS));
+  const headRowNo = rows.length + 1;
+  rows.push(headerRow(["序号", "类别", "名称 / 型号", "规格（按录入单位）", "数量", "单位"]));
 
-  const sheetRows = [...header, detailHeader, ...rows, [], ...totals];
-  return buildXlsxBuffer("BOM", sheetRows);
+  if (!items.length) {
+    // 不合并：该行落在 autoFilter 区域内，合并单元格会让 Excel 提示修复
+    rows.push({
+      height: 24,
+      cells: [
+        { v: "—", s: S.CELL_CENTER },
+        { v: "暂无物料明细", s: S.CELL },
+        { v: "", s: S.CELL },
+        { v: "", s: S.CELL },
+        { v: "", s: S.CELL },
+        { v: "", s: S.CELL }
+      ]
+    });
+  } else {
+    items.forEach((item, i) => {
+      const alt = i % 2 === 1;
+      rows.push({
+        height: 23,
+        cells: [
+          { v: i + 1, s: alt ? S.CELL_CENTER_ALT : S.CELL_CENTER },
+          { v: item.category, s: alt ? S.CELL_CENTER_ALT : S.CELL_CENTER },
+          { v: item.name, s: alt ? S.CELL_ALT : S.CELL },
+          { v: item.spec, s: alt ? S.CELL_ALT : S.CELL },
+          {
+            v: item.qty === "" ? "—" : item.qty,
+            s: item.qty === "" ? (alt ? S.CELL_CENTER_ALT : S.CELL_CENTER) : alt ? S.CELL_NUM_ALT : S.CELL_NUM
+          },
+          { v: item.unit, s: alt ? S.CELL_CENTER_ALT : S.CELL_CENTER }
+        ]
+      });
+    });
+  }
+  const lastDataRow = rows.length;
+
+  rows.push(blankRow(COLS));
+  rows.push(noteRow("单位口径：型材长度按 in（英寸）录入；板材长宽按 in（英寸）录入、厚度按 mm 录入；各行数量单位见「单位」列，均原样保留，不做换算。", COLS));
+  rows.push(noteRow("本表只列材料与规格，商务信息见 INF 项目基本信息。", COLS));
+
+  return renderStyledXlsx({
+    sheetName: "BOM",
+    columnWidths: [7, 13, 28, 42, 11, 10],
+    freezeRow: headRowNo,
+    autoFilter: { firstRow: headRowNo, lastRow: lastDataRow, lastCol: COLS },
+    rows
+  });
+}
+
+// 6 列的 BOM 用两组成对信息：A 标签 | B:C 值 | D 标签 | E:F 值
+function metaPairRow6(left, right) {
+  return {
+    height: 24,
+    cells: [
+      { v: left.label, s: S.META_LABEL },
+      { v: left.value, s: S.META_VALUE, span: 2 },
+      { v: right.label, s: S.META_LABEL },
+      { v: right.value, s: S.META_VALUE, span: 2 }
+    ]
+  };
 }
 
 // ── INF（项目基本信息）生成 ──
@@ -173,38 +277,125 @@ function sequenceOf(templateCode) {
   return m ? m[1] : "";
 }
 
+function typeCodeOf(fileName) {
+  const parts = String(fileName || "").split("_");
+  return parts.length > 1 ? parts[1] : "";
+}
+
 function generateInfXlsx(template) {
+  const COLS = 5;
   const code = template.template_code;
-  const rows = [
-    ["Parti 项目基本信息（INF）"],
-    ["模板编号", code],
-    ["场景码", scenarioCode(template.scenario)],
-    ["场景", template.scenario],
-    ["序号", sequenceOf(code)],
-    ["中文名", template.name],
-    ["部署环境", template.deploy_env || ""],
-    ["面积区间", template.area_range || ""],
-    ["第一购买理由", template.first_buying_reason || ""],
-    ["整包价（含税）", numOrEmpty(template.package_price)],
-    ["价格基准日", template.price_basis_date || ""],
-    ["安装工时（人·h）", numOrEmpty(template.installation_hours)],
-    ["版本", normalizeVersion(template.version)],
-    ["状态", template.status],
-    ["源模板", template.source_template || ""],
-    ["关联项目 PRJ", template.related_prj || ""],
-    ["一句话卖点", template.one_liner || ""],
-    ["报价口径", template.quote_note || ""],
-    ["交付备注 / 缺失件说明", template.delivery_note || ""],
-    ["建档日期", template.created_at || ""],
-    ["台账备注", template.ledger_note || ""],
-    []
-  ];
-  rows.push(["交付文件清单"]);
-  const list = Array.isArray(template.delivery_file_list)
-    ? template.delivery_file_list
-    : [];
-  for (const name of list) rows.push(["", name]);
-  return buildXlsxBuffer("项目信息", rows);
+  const ver = normalizeVersion(template.version);
+  const rows = [];
+
+  rows.push(titleRow("Parti 项目基本信息 · INF", COLS));
+  rows.push(subtitleRow(`${code} · ${text(template.name)} · ${ver} · 生成日期 ${beijingToday()}`, COLS));
+  rows.push(blankRow(COLS));
+
+  rows.push(sectionRow("基础标识", COLS));
+  rows.push(
+    metaPairRow(
+      { label: "模板编号", value: text(code) },
+      { label: "场景码", value: text(scenarioCode(template.scenario)) }
+    )
+  );
+  rows.push(
+    metaPairRow(
+      { label: "中文名", value: text(template.name) },
+      { label: "序号", value: text(sequenceOf(code)) }
+    )
+  );
+  rows.push(
+    metaPairRow(
+      { label: "应用场景", value: text(template.scenario) },
+      { label: "版本", value: ver }
+    )
+  );
+  rows.push(
+    metaPairRow(
+      { label: "状态", value: text(STATUS_LABELS[template.status] || template.status) },
+      { label: "建档日期", value: text(String(template.created_at || "").slice(0, 10)) }
+    )
+  );
+  rows.push(blankRow(COLS));
+
+  rows.push(sectionRow("部署与需求", COLS));
+  rows.push(
+    metaPairRow(
+      { label: "部署环境", value: text(template.deploy_env) },
+      { label: "面积区间", value: text(template.area_range) }
+    )
+  );
+  rows.push(
+    metaPairRow(
+      { label: "第一购买理由", value: text(template.first_buying_reason) },
+      { label: "源模板", value: text(template.source_template) }
+    )
+  );
+  rows.push(metaWideRow("一句话卖点", text(template.one_liner)));
+  rows.push(blankRow(COLS));
+
+  rows.push(sectionRow("商务口径", COLS));
+  const price = numOrEmpty(template.package_price);
+  rows.push(
+    metaPairRow(
+      { label: "整包价（含税）", value: price === "" ? "—" : price, money: price !== "" },
+      { label: "价格基准日", value: text(template.price_basis_date) }
+    )
+  );
+  rows.push(
+    metaPairRow(
+      { label: "安装工时（人·h）", value: text(numOrEmpty(template.installation_hours) || "") },
+      { label: "关联项目 PRJ", value: text(template.related_prj) }
+    )
+  );
+  rows.push(metaWideRow("报价口径", text(template.quote_note)));
+  rows.push(blankRow(COLS));
+
+  rows.push(sectionRow("交付与备注", COLS));
+  rows.push(metaWideRow("交付备注 / 缺失件说明", text(template.delivery_note)));
+  rows.push(metaWideRow("台账备注", text(template.ledger_note)));
+  rows.push(blankRow(COLS));
+
+  rows.push(sectionRow("交付文件清单", COLS));
+  rows.push(
+    headerRow(["序号", "类型码", "交付件"], [{ v: "文件名全称", s: S.HEADER, span: 2 }])
+  );
+  const list = Array.isArray(template.delivery_file_list) ? template.delivery_file_list : [];
+  if (!list.length) {
+    rows.push({
+      height: 24,
+      cells: [
+        { v: "—", s: S.CELL_CENTER },
+        { v: "—", s: S.CELL_CENTER },
+        { v: "未登记交付文件", s: S.CELL, span: 2 }
+      ]
+    });
+  } else {
+    list.forEach((name, i) => {
+      const alt = i % 2 === 1;
+      const tc = typeCodeOf(name);
+      rows.push({
+        height: 23,
+        cells: [
+          { v: i + 1, s: alt ? S.CELL_CENTER_ALT : S.CELL_CENTER },
+          { v: text(tc), s: S.TYPE_CODE },
+          { v: text(TYPE_LABELS[tc]), s: alt ? S.CELL_ALT : S.CELL },
+          { v: text(name), s: alt ? S.CELL_ALT : S.CELL, span: 2 }
+        ]
+      });
+    });
+  }
+  rows.push(blankRow(COLS));
+  rows.push(noteRow("交付包内文件以实际下载结果为准；清单与台账、系统附件三处应保持一致。", COLS));
+
+  return renderStyledXlsx({
+    sheetName: "项目信息",
+    columnWidths: [20, 26, 18, 22, 46],
+    freezeRow: 0,
+    landscape: false,
+    rows
+  });
 }
 
 // ── 交付包打包 ──
