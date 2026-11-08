@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const puppeteer = require("puppeteer-core");
 const { UPLOADS_DIR } = require("./storage");
 const { handbookDateLabel, renderLogoBar } = require("./design-system");
@@ -8,7 +9,174 @@ const { handbookDateLabel, renderLogoBar } = require("./design-system");
 const PAGE_W = 960;
 const PAGE_H = 540;
 
+/** 手册图片优化参数：页面只有 960×540，原图动辄十几 MB，必须下采样后交给 Chromium */
+const SHEET_IMG_MAX_EDGE = 1400;
+const SHEET_IMG_QUALITY = 0.82;
+const SHEET_IMG_MIN_BYTES = 400 * 1024;
+const SHEET_IMG_MIN_CHARS = Math.floor(SHEET_IMG_MIN_BYTES * 4 / 3);
+const SHEET_CACHE_LIMIT = 120;
+
+const compressedByPath = new Map(); // 文件指纹 -> 压缩后的 data URI
+const compressedByHash = new Map(); // 兜底：data URI 内容指纹 -> 压缩后的 data URI
+const optimizedB64 = new Set(); // 已是压缩产物的 base64，不再重复压缩
+
+function rememberOptimized(dataUri) {
+  const i = dataUri.indexOf(",");
+  if (i > 0) optimizedB64.add(dataUri.slice(i + 1));
+  return dataUri;
+}
+
 let browserPromise = null;
+
+function cacheSet(map, key, value) {
+  if (map.size >= SHEET_CACHE_LIMIT) map.delete(map.keys().next().value);
+  map.set(key, value);
+}
+
+function isBrowserDeath(e) {
+  return /Connection closed|Target closed|disconnected|Protocol error|browser has been closed|Failed to launch|Session closed/i.test(
+    String((e && e.message) || e)
+  );
+}
+
+function mimeOfPath(abs) {
+  const ext = path.extname(abs).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  return "image/jpeg";
+}
+
+function imageCacheKey(abs) {
+  const st = fs.statSync(abs);
+  return `${abs}|${st.size}|${Math.round(st.mtimeMs)}`;
+}
+
+/**
+ * 用 Chromium 自身的 canvas 把单张大图缩到 1400px 内并转 JPEG。
+ * 图片经本地拦截返回（同源，canvas 不会被污染），且一次只处理一张，避免撑爆容器内存。
+ */
+async function shrinkImageWithBrowser(browser, buf, mime) {
+  const page = await browser.newPage();
+  try {
+    page.setDefaultTimeout(60000);
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url === "http://sheet.local/") {
+        req.respond({ status: 200, contentType: "text/html; charset=utf-8", body: "<!doctype html><title>img</title>" }).catch(() => {});
+      } else if (url === "http://sheet.local/image") {
+        req.respond({ status: 200, contentType: mime, body: buf }).catch(() => {});
+      } else {
+        req.abort().catch(() => {});
+      }
+    });
+    await page.goto("http://sheet.local/", { waitUntil: "domcontentloaded" });
+    return await page.evaluate(
+      async ({ url, maxEdge, quality }) => {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        return canvas.toDataURL("image/jpeg", quality);
+      },
+      { url: "http://sheet.local/image", maxEdge: SHEET_IMG_MAX_EDGE, quality: SHEET_IMG_QUALITY }
+    );
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/** 生成手册前预热图片压缩缓存，让 generatePublicSheetHtml 直接拿到小图 */
+async function prepareSheetImages(template) {
+  const urls = [
+    template.cover_image,
+    ...(template.effect_images || []),
+    ...(template.render_images || [])
+  ].filter(Boolean);
+  const todo = [];
+  for (const url of new Set(urls)) {
+    const abs = publicUrlToAbs(url);
+    if (!abs) continue;
+    let key;
+    try {
+      key = imageCacheKey(abs);
+    } catch {
+      continue;
+    }
+    if (compressedByPath.has(key)) continue;
+    if (fs.statSync(abs).size < SHEET_IMG_MIN_BYTES) continue;
+    todo.push({ abs, key });
+  }
+  if (!todo.length) return;
+
+  const browser = await getBrowser();
+  let done = 0;
+  for (const { abs, key } of todo) {
+    if (compressedByPath.has(key)) continue;
+    try {
+      const out = rememberOptimized(await shrinkImageWithBrowser(browser, fs.readFileSync(abs), mimeOfPath(abs)));
+      cacheSet(compressedByPath, key, out);
+      done += 1;
+    } catch (e) {
+      if (isBrowserDeath(e)) {
+        await resetBrowser();
+        throw e;
+      }
+      console.warn("[public-sheet] 图片压缩跳过:", path.basename(abs), e.message);
+    }
+  }
+  console.log(`[public-sheet] 图片压缩 ${done}/${todo.length}`);
+}
+
+/** 兜底：场景手册等未走预热的路径，仍在打印前把超大 data URI 换掉 */
+const BIG_DATA_URI_RE = /data:image\/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/g;
+
+async function compactHtmlImages(html, browser) {
+  const jobs = new Map();
+  let m;
+  BIG_DATA_URI_RE.lastIndex = 0;
+  while ((m = BIG_DATA_URI_RE.exec(html))) {
+    if (m[2].length < SHEET_IMG_MIN_CHARS || jobs.has(m[2]) || optimizedB64.has(m[2])) continue;
+    jobs.set(m[2], {
+      key: crypto.createHash("sha1").update(m[2]).digest("hex"),
+      mime: `image/${m[1]}`
+    });
+  }
+  if (!jobs.size) return { html, optimized: 0 };
+
+  const replacements = new Map();
+  for (const [b64, info] of jobs) {
+    let out = compressedByHash.get(info.key);
+    if (!out) {
+      try {
+        out = rememberOptimized(await shrinkImageWithBrowser(browser, Buffer.from(b64, "base64"), info.mime));
+      } catch (e) {
+        if (isBrowserDeath(e)) throw e;
+        console.warn("[public-sheet] 兜底压缩失败，保留原图:", e.message);
+        continue;
+      }
+      cacheSet(compressedByHash, info.key, out);
+    }
+    replacements.set(b64, out);
+  }
+  if (!replacements.size) return { html, optimized: 0 };
+  BIG_DATA_URI_RE.lastIndex = 0;
+  const compact = html.replace(BIG_DATA_URI_RE, (full, _mime, b64) => replacements.get(b64) || full);
+  const before = (Buffer.byteLength(html) / 1048576).toFixed(1);
+  const after = (Buffer.byteLength(compact) / 1048576).toFixed(1);
+  console.log(`[public-sheet] HTML 图片兜底压缩 ${replacements.size} 张：${before}MB → ${after}MB`);
+  return { html: compact, optimized: replacements.size };
+}
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -40,10 +208,14 @@ function publicUrlToAbs(publicUrl) {
 function imageToDataUri(publicUrl) {
   const abs = publicUrlToAbs(publicUrl);
   if (!abs) return null;
-  const ext = path.extname(abs).toLowerCase();
-  const mime =
-    ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : "image/jpeg";
-  return `data:${mime};base64,${fs.readFileSync(abs).toString("base64")}`;
+  // 优先用预热阶段压缩过的图，避免整张原始 PNG 被 base64 塞进 HTML
+  try {
+    const hit = compressedByPath.get(imageCacheKey(abs));
+    if (hit) return hit;
+  } catch {
+    // stat 失败时回退到读原图
+  }
+  return `data:${mimeOfPath(abs)};base64,${fs.readFileSync(abs).toString("base64")}`;
 }
 
 function pricingModeLabel(mode) {
@@ -513,12 +685,20 @@ function generatePublicSheetHtml(template) {
   return wrapSheetHtml(`${template.template_code} 方案清单`, buildTemplatePages(template));
 }
 
-async function renderPdfFromHtml(html) {
-  const browser = await getBrowser();
+async function printPdf(browser, html) {
   const page = await browser.newPage();
   try {
+    page.setDefaultTimeout(60000);
     await page.setViewport({ width: PAGE_W, height: PAGE_H });
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "load" });
+    // 等图片真正解码完成再打印，避免 PDF 出现空白页
+    await page.evaluate(async () => {
+      await Promise.all(
+        Array.from(document.images || []).map((img) =>
+          img.decode ? img.decode().catch(() => {}) : Promise.resolve()
+        )
+      );
+    });
     const pdf = await page.pdf({
       width: `${PAGE_W}px`,
       height: `${PAGE_H}px`,
@@ -528,27 +708,69 @@ async function renderPdfFromHtml(html) {
     });
     return Buffer.from(pdf);
   } finally {
-    await page.close();
+    // 浏览器已崩溃时 close 会再抛一次，不能让它盖住真实错误
+    await page.close().catch(() => {});
+  }
+}
+
+async function renderPdfFromHtml(html) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const browser = await getBrowser();
+      const compact = await compactHtmlImages(html, browser);
+      return await printPdf(browser, compact.html);
+    } catch (e) {
+      if (!isBrowserDeath(e) || attempt === 1) throw e;
+      console.warn("[public-sheet] 浏览器连接断开，重建后重试一次");
+      await resetBrowser();
+    }
   }
 }
 
 async function getBrowser() {
   if (!browserPromise) {
     const executablePath = resolveExecutablePath();
-    browserPromise = puppeteer.launch({
-      headless: true,
-      executablePath,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--font-render-hinting=none"]
-    });
-    browserPromise.catch(() => {
-      browserPromise = null;
+    const p = puppeteer
+      .launch({
+        headless: true,
+        executablePath,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--font-render-hinting=none",
+          // 容器 /dev/shm 默认只有 64MB，Chromium 渲染大图极易在此崩溃
+          "--disable-dev-shm-usage",
+          "--disable-gpu"
+        ]
+      })
+      .then((browser) => {
+        browser.on("disconnected", () => {
+          if (browserPromise === p) browserPromise = null;
+        });
+        return browser;
+      });
+    browserPromise = p;
+    p.catch(() => {
+      if (browserPromise === p) browserPromise = null;
     });
   }
   return browserPromise;
 }
 
+async function resetBrowser() {
+  const p = browserPromise;
+  browserPromise = null;
+  if (!p) return;
+  try {
+    const browser = await p;
+    await browser.close();
+  } catch {
+    // 已经断开的浏览器无需再关
+  }
+}
+
 function resolveExecutablePath() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
   const candidates = [
@@ -570,7 +792,15 @@ function resolveExecutablePath() {
 }
 
 async function renderPublicSheetPdf(template) {
-  return renderPdfFromHtml(generatePublicSheetHtml(template));
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await prepareSheetImages(template);
+      return await renderPdfFromHtml(generatePublicSheetHtml(template));
+    } catch (e) {
+      if (!isBrowserDeath(e) || attempt === 1) throw e;
+      await resetBrowser();
+    }
+  }
 }
 
 function pdfFilename(templateCode) {
