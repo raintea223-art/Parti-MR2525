@@ -967,7 +967,7 @@ tfoot td {
 }
 
 .gallery-poster-cover {
-  flex: 1.15;
+  flex: 1.1;
   min-height: 0;
   background: var(--canvas-paper);
   overflow: hidden;
@@ -1006,7 +1006,7 @@ tfoot td {
 }
 
 .gallery-poster-info {
-  flex: 1;
+  flex: 1.05;
   min-height: 0;
   padding: var(--s-md) var(--s-lg) var(--s-lg);
   display: flex;
@@ -1017,6 +1017,7 @@ tfoot td {
 
 .gallery-poster-name {
   margin: 0;
+  flex-shrink: 0;
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
@@ -1029,11 +1030,28 @@ tfoot td {
 }
 
 .gallery-poster-price {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 700;
+  line-height: 1.15;
   color: var(--accent);
   letter-spacing: -0.02em;
+}
+
+/* 次行：含税 / 报价基准日。小字号，避免与价格争宽度造成随机折行 */
+.gallery-poster-price-meta {
+  margin-top: 3px;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--ink-muted);
+  white-space: nowrap;
 }
 
 .gallery-poster-liner {

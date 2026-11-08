@@ -204,6 +204,14 @@ function fmtPackagePrice(t) {
   return t.price_basis_date ? `${price}（含税 · ${t.price_basis_date}）` : `${price}（含税）`;
 }
 
+// 图册卡片专用：价格与「含税 / 报价基准日」显式分两行，避免长串自动随机折行
+function renderGalleryPriceBlock(t) {
+  const price = fmtMoney(t.package_price);
+  const basis = String(t.price_basis_date || "").trim();
+  const meta = basis ? `含税 · 报价基准日 ${basis}` : "含税";
+  return `<div class="gallery-poster-price">${escapeHtml(price)}<span class="gallery-poster-price-meta">${escapeHtml(meta)}</span></div>`;
+}
+
 let workflowMermaidReady = false;
 
 function switchView(name) {
@@ -1255,7 +1263,6 @@ async function runGalleryBatchDownload(kind, items) {
 }
 
 function renderGalleryPoster(t) {
-  const price = fmtPackagePrice(t);
   const dims =
     t.width_mm && t.depth_mm && t.height_mm
       ? `${t.width_mm}×${t.depth_mm}×${t.height_mm} mm`
@@ -1280,7 +1287,7 @@ function renderGalleryPoster(t) {
       <div class="gallery-poster-cover">${cover}</div>
       <div class="gallery-poster-info">
         <h3 class="gallery-poster-name">${escapeHtml(t.name)}</h3>
-        <div class="gallery-poster-price">${price}</div>
+        ${renderGalleryPriceBlock(t)}
         <p class="gallery-poster-liner">${escapeHtml(t.one_liner || "—")}</p>
         <div class="gallery-poster-secondary">
           <span>${escapeHtml(t.template_code)}</span>
@@ -3518,7 +3525,6 @@ async function uploadScenarioImage(scenarioId, kind, file) {
 }
 
 function renderGalleryPosterPreview(t) {
-  const price = fmtPackagePrice(t);
   const dims =
     t.width_mm && t.depth_mm && t.height_mm
       ? `${t.width_mm}×${t.depth_mm}×${t.height_mm} mm`
@@ -3534,7 +3540,7 @@ function renderGalleryPosterPreview(t) {
     <div class="gallery-poster-cover">${cover}</div>
     <div class="gallery-poster-info">
       <h3 class="gallery-poster-name">${escapeHtml(t.name)}</h3>
-      <div class="gallery-poster-price">${price}</div>
+      ${renderGalleryPriceBlock(t)}
       <p class="gallery-poster-liner">${escapeHtml(t.one_liner || "—")}</p>
       <div class="gallery-poster-secondary">
         <span>${escapeHtml(t.template_code)}</span>
